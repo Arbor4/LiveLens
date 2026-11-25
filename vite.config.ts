@@ -30,6 +30,7 @@ export default defineConfig({
         capture: resolve(__dirname, "capture.html"),
         overlay: resolve(__dirname, "overlay.html"),
         mirror: resolve(__dirname, "mirror.html"),
+        liveControls: resolve(__dirname, "live-controls.html"),
       },
     },
   },

@@ -377,6 +377,8 @@ fn open_in_place_overlay_windows(
         w.set_size(Size::Physical(PhysicalSize::new(phys_w, phys_h)))?;
         let _ = w.set_ignore_cursor_events(true);
         let _ = w.show();
+        #[cfg(target_os = "macos")]
+        configure_macos_floating_window(&w, (logical_x, logical_y, logical_w, logical_h), false);
     } else {
         let url = WebviewUrl::App("overlay.html".into());
         let window = WebviewWindowBuilder::new(
@@ -400,10 +402,16 @@ fn open_in_place_overlay_windows(
         window.set_size(Size::Physical(PhysicalSize::new(phys_w, phys_h)))?;
         let _ = window.set_ignore_cursor_events(true);
         window.show()?;
+        #[cfg(target_os = "macos")]
+        configure_macos_floating_window(
+            &window,
+            (logical_x, logical_y, logical_w, logical_h),
+            false,
+        );
     }
 
     // Open floating mini control pill near the overlay bottom/top edge.
-    let ctrl_w = 430.0;
+    let ctrl_w = 500.0;
     let ctrl_h = 44.0;
     let ctrl_x = logical_x + (logical_w - ctrl_w).max(0.0) / 2.0;
     let ctrl_y = if logical_y + logical_h + ctrl_h + 12.0 <= (rt.monitor_y as f64 + mon_h) {
@@ -415,6 +423,8 @@ fn open_in_place_overlay_windows(
     if let Some(w) = app.get_webview_window("live-controls") {
         let _ = w.set_position(Position::Logical(tauri::LogicalPosition::new(ctrl_x, ctrl_y)));
         let _ = w.show();
+        #[cfg(target_os = "macos")]
+        configure_macos_floating_window(&w, (ctrl_x, ctrl_y, ctrl_w, ctrl_h), true);
     } else {
         let url = WebviewUrl::App("live-controls.html".into());
         let ctrl = WebviewWindowBuilder::new(app, "live-controls", url)
@@ -423,13 +433,80 @@ fn open_in_place_overlay_windows(
             .transparent(true)
             .always_on_top(true)
             .skip_taskbar(true)
+            .shadow(false)
             .resizable(false)
             .focused(false)
             .position(ctrl_x, ctrl_y)
             .inner_size(ctrl_w, ctrl_h)
             .build()?;
+        let app_handle = app.clone();
+        ctrl.on_window_event(move |event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let app_clone = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state: State<'_, SharedState> = app_clone.state();
+                    let should_stop = {
+                        let rt = state.live_runtime.read().await;
+                        rt.active && rt.mode == LiveDisplayMode::InPlace
+                    };
+                    if should_stop {
+                        stop_existing_live_loop(state.inner()).await;
+                        if let Some(ov) =
+                            app_clone.get_webview_window(crate::commands::overlay::OVERLAY_WINDOW_LABEL)
+                        {
+                            let _ = ov.close();
+                        }
+                    }
+                });
+            }
+        });
         let _ = ctrl.show();
+        #[cfg(target_os = "macos")]
+        configure_macos_floating_window(&ctrl, (ctrl_x, ctrl_y, ctrl_w, ctrl_h), true);
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn configure_macos_floating_window(
+    window: &tauri::WebviewWindow,
+    logical_bounds: (f64, f64, f64, f64),
+    above_overlay: bool,
+) {
+    use core_graphics::display::CGDisplay;
+    use objc2_app_kit::{NSScreenSaverWindowLevel, NSWindow, NSWindowCollectionBehavior};
+
+    let (mon_x, mon_y, mon_w, mon_h) = logical_bounds;
+    let main_bounds = CGDisplay::main().bounds();
+    let appkit_x = mon_x;
+    let appkit_y = main_bounds.origin.y + main_bounds.size.height - (mon_y + mon_h);
+
+    let win_clone = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        if let Ok(raw) = win_clone.ns_window() {
+            unsafe {
+                let ns_window: &NSWindow = &*raw.cast();
+                let mut behavior = ns_window.collectionBehavior();
+                behavior |= NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::Stationary
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary;
+                ns_window.setCollectionBehavior(behavior);
+                ns_window.setLevel(if above_overlay {
+                    NSScreenSaverWindowLevel + 1
+                } else {
+                    NSScreenSaverWindowLevel
+                });
+                ns_window.setHidesOnDeactivate(false);
+
+                let mut frame = ns_window.frame();
+                frame.origin.x = appkit_x;
+                frame.origin.y = appkit_y;
+                frame.size.width = mon_w;
+                frame.size.height = mon_h;
+                ns_window.setFrame_display(frame, true);
+                ns_window.orderFrontRegardless();
+            }
+        }
+    });
 }

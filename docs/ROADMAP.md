@@ -11,7 +11,7 @@
 | **Phase 0** | 需求规范、本地模型部署指南与外置 RapidOCR 服务脚手架 | `docs/ROADMAP.md`、`docs/LOCAL_MODELS.md`、`scripts/rapidocr_server.py` | ✅ 已完成 |
 | **Phase 1** | 仿微信选区微调 + 悬浮工具栏 + 多引擎 OCR/大模型设置 + 结构化译文渲染 | 选区 8 向微调、工具栏（翻译/识字/原位实时/副屏实时）、Apple Vision + RapidOCR + HY-MT1.5 批量翻译与有道切换 | ✅ 已完成 |
 | **Phase 2** | 区域持续录屏引擎 + 模式 2（实时翻译副屏 / 镜像展示区） | macOS `ScreenCaptureKit` 区域流、帧差去重 + LRU 缓存、`mirror.html` 副屏窗口与双模式画面同步 | ✅ 已完成 |
-| **Phase 3** | 模式 1（原位置穿透覆盖 + 吸底字幕条 + 迷你悬浮控制条）与发布打包 | 鼠标穿透覆层、`ScreenCaptureKit` 窗口过滤防自录、模式 1/2 无缝互切、全量测试与 `.dmg` 打包 | 🔄 进行中 |
+| **Phase 3** | 模式 1（原位置穿透覆盖 + 吸底字幕条 + 迷你悬浮控制条）与发布打包 | 鼠标穿透覆层、`ScreenCaptureKit` 窗口过滤防自录、模式 1/2 无缝互切、全量测试与 `.dmg` 打包 | ✅ 已完成 |
 
 ---
 
