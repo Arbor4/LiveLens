@@ -122,6 +122,36 @@ export interface CaptureTranslatePayload {
   imageHeight?: number;
 }
 
+export type LiveDisplayMode = "in_place" | "mirror";
+
+export interface LiveSessionStatus {
+  active: boolean;
+  mode: LiveDisplayMode;
+  paused: boolean;
+  keyframeOnly: boolean;
+  bilingual: boolean;
+  subtitleBarMode: boolean;
+  overlayOpacity: number;
+  selection: CaptureRect;
+  sourceWidth: number;
+  sourceHeight: number;
+  frameUrl: string;
+  frameSeq: number;
+  regions: OverlayRegion[];
+  lastError: string;
+}
+
+export interface LiveFrameReadyEvent {
+  seq: number;
+}
+
+export interface LiveRegionsEvent {
+  frameSeq: number;
+  regions: OverlayRegion[];
+  ocrMs: number;
+  translateMs: number;
+}
+
 export interface OverlayPayload {
   requestId: string;
   lanFrom: string;

@@ -433,6 +433,48 @@ pub struct CaptureTranslatePayload {
     pub image_height: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveDisplayMode {
+    InPlace,
+    #[default]
+    Mirror,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSessionStatus {
+    pub active: bool,
+    pub mode: LiveDisplayMode,
+    pub paused: bool,
+    pub keyframe_only: bool,
+    pub bilingual: bool,
+    pub subtitle_bar_mode: bool,
+    pub overlay_opacity: f32,
+    pub selection: CaptureRect,
+    pub source_width: u32,
+    pub source_height: u32,
+    pub frame_url: String,
+    pub frame_seq: u64,
+    pub regions: Vec<OverlayRegion>,
+    pub last_error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveFrameReadyEvent {
+    pub seq: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveRegionsEvent {
+    pub frame_seq: u64,
+    pub regions: Vec<OverlayRegion>,
+    pub ocr_ms: u64,
+    pub translate_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenCapturePermissionStatus {

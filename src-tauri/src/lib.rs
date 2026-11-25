@@ -2,6 +2,7 @@ pub mod capture;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod live;
 pub mod models;
 pub mod popup_shortcut;
 pub mod self_test;
@@ -214,6 +215,13 @@ pub fn run() {
             commands::capture::get_screen_capture_permission_status,
             commands::capture::reset_screen_capture_permission,
             commands::capture::open_screen_capture_settings,
+            commands::live::start_live_session,
+            commands::live::stop_live_session,
+            commands::live::pause_live_session,
+            commands::live::update_live_options,
+            commands::live::switch_live_mode,
+            commands::live::load_live_status,
+            commands::live::reselect_live_region,
             commands::overlay::show_overlay,
             commands::overlay::load_overlay_payload,
             commands::overlay::close_overlay,

@@ -29,6 +29,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         capture: resolve(__dirname, "capture.html"),
         overlay: resolve(__dirname, "overlay.html"),
+        mirror: resolve(__dirname, "mirror.html"),
       },
     },
   },
