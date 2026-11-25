@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use reqwest::Client;
 use tokio::sync::RwLock;
 
 use crate::config::ConfigStore;
@@ -28,8 +30,10 @@ pub struct ActiveCaptureSession {
 pub struct SharedState {
     pub config_store: Arc<ConfigStore>,
     pub settings: Arc<RwLock<TranslatorSettings>>,
+    pub http_client: Arc<Client>,
     pub api_client: Arc<YoudaoClient>,
     pub text_translator: Arc<TextTranslator>,
+    pub translation_cache: Arc<RwLock<HashMap<String, String>>>,
     pub capture_in_progress: Arc<RwLock<bool>>,
     pub capture_session: Arc<RwLock<Option<ActiveCaptureSession>>>,
     pub capture_mode: Arc<RwLock<CaptureMode>>,
@@ -40,14 +44,17 @@ impl SharedState {
     pub fn new(
         config_store: ConfigStore,
         settings: TranslatorSettings,
+        http_client: Arc<Client>,
         api_client: YoudaoClient,
         text_translator: TextTranslator,
     ) -> Self {
         Self {
             config_store: Arc::new(config_store),
             settings: Arc::new(RwLock::new(settings)),
+            http_client,
             api_client: Arc::new(api_client),
             text_translator: Arc::new(text_translator),
+            translation_cache: Arc::new(RwLock::new(HashMap::new())),
             capture_in_progress: Arc::new(RwLock::new(false)),
             capture_session: Arc::new(RwLock::new(None)),
             capture_mode: Arc::new(RwLock::new(CaptureMode::default())),

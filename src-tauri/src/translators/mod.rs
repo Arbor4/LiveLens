@@ -2,6 +2,7 @@ pub mod bing;
 pub mod builtin;
 pub mod image_ocr;
 pub mod llm;
+pub mod ocr;
 
 use std::sync::Arc;
 
@@ -63,5 +64,32 @@ impl TextTranslator {
                     .await
             }
         }
+    }
+
+    pub async fn translate_llm_batch(
+        &self,
+        texts: &[String],
+        from: &str,
+        to: &str,
+        llm_config: &LlmConfig,
+    ) -> AppResult<Vec<String>> {
+        self.llm
+            .translate_batch(
+                texts,
+                from,
+                to,
+                &llm_config.base_url,
+                &llm_config.api_key,
+                &llm_config.model,
+                &llm_config.prompt,
+                &llm_config.auto_prompt,
+            )
+            .await
+    }
+
+    pub async fn test_llm_connection(&self, llm_config: &LlmConfig) -> AppResult<String> {
+        self.llm
+            .test_connection(&llm_config.base_url, &llm_config.api_key, &llm_config.model)
+            .await
     }
 }

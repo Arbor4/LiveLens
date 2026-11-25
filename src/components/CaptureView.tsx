@@ -5,7 +5,9 @@ import type {
   CaptureTranslatePayload,
   CaptureViewPayload,
   CaptureWindowInfo,
+  OverlayRegion,
 } from "../types/translator";
+import { RegionOverlayLayer } from "./RegionOverlayLayer";
 
 interface Point {
   x: number;
@@ -19,6 +21,25 @@ interface CssRect {
   height: number;
 }
 
+type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+type InteractionMode =
+  | { kind: "none" }
+  | { kind: "new"; start: Point; hoveredAtDown: CaptureWindowInfo | null; dragged: boolean }
+  | { kind: "move"; start: Point; origin: CssRect }
+  | { kind: "resize"; handle: ResizeHandle; start: Point; origin: CssRect };
+
+const HANDLE_CURSORS: Record<ResizeHandle, string> = {
+  nw: "nwse-resize",
+  n: "ns-resize",
+  ne: "nesw-resize",
+  e: "ew-resize",
+  se: "nwse-resize",
+  s: "ns-resize",
+  sw: "nesw-resize",
+  w: "ew-resize",
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -31,6 +52,40 @@ function normalizeRect(a: Point, b: Point, bounds: DOMRect): CssRect {
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
+function applyResize(
+  origin: CssRect,
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  bounds: DOMRect,
+): CssRect {
+  const minSize = 12;
+  let left = origin.x;
+  let top = origin.y;
+  let right = origin.x + origin.width;
+  let bottom = origin.y + origin.height;
+
+  if (handle.includes("w")) {
+    left = clamp(origin.x + dx, 0, right - minSize);
+  }
+  if (handle.includes("e")) {
+    right = clamp(origin.x + origin.width + dx, left + minSize, bounds.width);
+  }
+  if (handle.includes("n")) {
+    top = clamp(origin.y + dy, 0, bottom - minSize);
+  }
+  if (handle.includes("s")) {
+    bottom = clamp(origin.y + origin.height + dy, top + minSize, bounds.height);
+  }
+
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -39,10 +94,7 @@ export function CaptureView() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const bootStartedAtRef = useRef<number>(performance.now());
   const timelineSeqRef = useRef<number>(0);
-  const mouseDownRef = useRef<boolean>(false);
-  const hasDraggedRef = useRef<boolean>(false);
-  const dragStartRef = useRef<Point | null>(null);
-  const hoveredWindowAtDownRef = useRef<CaptureWindowInfo | null>(null);
+  const interactionRef = useRef<InteractionMode>({ kind: "none" });
   const selectionImageRef = useRef<CaptureRect | null>(null);
 
   const [payload, setPayload] = useState<CaptureViewPayload | null>(null);
@@ -50,13 +102,21 @@ export function CaptureView() {
   const [selectionCss, setSelectionCss] = useState<CssRect | null>(null);
   const [loading, setLoading] = useState(false);
   const [resultImageBase64, setResultImageBase64] = useState("");
+  const [resultRegions, setResultRegions] = useState<OverlayRegion[]>([]);
+  const [resultSourceSize, setResultSourceSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
   const [showResult, setShowResult] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fatalError, setFatalError] = useState("");
   const [viewport, setViewport] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
+
+  const hasResult = Boolean(resultImageBase64) || resultRegions.length > 0;
 
   const debugTimeline = useCallback(async (message: string) => {
     const elapsed = (performance.now() - bootStartedAtRef.current).toFixed(1);
@@ -122,18 +182,18 @@ export function CaptureView() {
     [getRootRect],
   );
 
-  const pointerWithinSelection = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!selectionCss) return false;
+  const pointerWithinRect = useCallback(
+    (clientX: number, clientY: number, rect: CssRect | null) => {
+      if (!rect) return false;
       const p = pointFromEvent(clientX, clientY);
       return (
-        p.x >= selectionCss.x &&
-        p.x <= selectionCss.x + selectionCss.width &&
-        p.y >= selectionCss.y &&
-        p.y <= selectionCss.y + selectionCss.height
+        p.x >= rect.x &&
+        p.x <= rect.x + rect.width &&
+        p.y >= rect.y &&
+        p.y <= rect.y + rect.height
       );
     },
-    [pointFromEvent, selectionCss],
+    [pointFromEvent],
   );
 
   const findWindowAtPoint = useCallback(
@@ -158,47 +218,100 @@ export function CaptureView() {
     [getRootRect, pointFromEvent],
   );
 
-  const submitSelectionRect = useCallback(
-    async (rect: CaptureRect) => {
-      if (!payload) return;
+  const runSelectionAction = useCallback(
+    async (action: "translate" | "copy_text") => {
+      if (!payload || !selectionCss) return;
+      const rect = selectionImageRef.current ?? cssRectToImageRect(selectionCss, payload);
       if (rect.width <= 4 || rect.height <= 4) {
-        selectionImageRef.current = null;
-        setSelectionCss(null);
         return;
       }
 
       selectionImageRef.current = rect;
-      setSelectionCss(imageRectToCssRect(rect, payload));
       setHoveredWindow(null);
       setLoading(true);
       setResultImageBase64("");
+      setResultRegions([]);
       setError("");
+      setNotice("");
 
       try {
         const result = await invokeCommand<CaptureTranslatePayload>("submit_capture_selection", {
           selection: rect,
+          mode: action,
         });
+        if (action === "copy_text") {
+          return;
+        }
         selectionImageRef.current = result.selection;
         setSelectionCss(imageRectToCssRect(result.selection, payload));
         setResultImageBase64(result.imageBase64);
+        const regions = result.regions ?? [];
+        setResultRegions(regions);
+        setResultSourceSize({
+          w: result.imageWidth || result.selection.width,
+          h: result.imageHeight || result.selection.height,
+        });
         setShowResult(true);
+        if (!result.imageBase64 && regions.length === 0) {
+          setNotice("未识别到文字，可调整选区或切换 OCR 引擎后重试");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }
     },
-    [imageRectToCssRect, payload],
+    [cssRectToImageRect, imageRectToCssRect, payload, selectionCss],
   );
 
-  const submitSelection = useCallback(
-    async (rectCss: CssRect) => {
-      if (!payload) return;
-      const rect = cssRectToImageRect(rectCss, payload);
-      await submitSelectionRect(rect);
+  const runLiveAction = useCallback(
+    async (liveMode: "in_place" | "mirror") => {
+      if (!payload || !selectionCss) return;
+      const rect = selectionImageRef.current ?? cssRectToImageRect(selectionCss, payload);
+      if (rect.width <= 4 || rect.height <= 4) {
+        return;
+      }
+      setError("");
+      setNotice("");
+      try {
+        await invokeCommand("start_live_session", {
+          selection: rect,
+          mode: liveMode,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(
+          msg.includes("Command") || msg.includes("not found")
+            ? "实时翻译模式将在下一阶段接入，当前请先使用「截图翻译」或「识别文字」"
+            : msg,
+        );
+      }
     },
-    [cssRectToImageRect, payload, submitSelectionRect],
+    [cssRectToImageRect, payload, selectionCss],
   );
+
+  const handleCopyTranslated = useCallback(async () => {
+    const text = resultRegions
+      .map((r) => r.translated || r.source)
+      .filter(Boolean)
+      .join("\n");
+    if (!text) return;
+    try {
+      await invokeCommand("copy_capture_text", { text });
+      setNotice("已复制译文到剪贴板");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [resultRegions]);
+
+  const resetToHover = useCallback(() => {
+    selectionImageRef.current = null;
+    setSelectionCss(null);
+    setResultImageBase64("");
+    setResultRegions([]);
+    setError("");
+    setNotice("");
+  }, []);
 
   useEffect(() => {
     document.body.dataset.mode = "capture";
@@ -250,7 +363,16 @@ export function CaptureView() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        void cancelCapture();
+        if (hasResult) {
+          resetToHover();
+        } else if (selectionCss) {
+          resetToHover();
+        } else {
+          void cancelCapture();
+        }
+      } else if (event.key === "Enter" && selectionCss && !hasResult && !loading) {
+        event.preventDefault();
+        void runSelectionAction(payload?.copyTextMode ? "copy_text" : "translate");
       }
     };
 
@@ -267,7 +389,16 @@ export function CaptureView() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
     };
-  }, [cancelCapture, imageRectToCssRect, payload]);
+  }, [
+    cancelCapture,
+    hasResult,
+    imageRectToCssRect,
+    loading,
+    payload,
+    resetToHover,
+    runSelectionAction,
+    selectionCss,
+  ]);
 
   if (fatalError) {
     return (
@@ -298,18 +429,44 @@ export function CaptureView() {
       ? `${hoveredWindow.ownerName || hoveredWindow.title || "窗口"} · ${hoveredWindow.rect.width} × ${hoveredWindow.rect.height}`
       : "";
 
+  const isLockedSelection = Boolean(selectionCss) && !loading && interactionRef.current.kind === "none";
+
   let hintText = "正在准备截图… · Esc/右键取消";
   if (payload) {
-    if (resultImageBase64) {
-      hintText = "区域内右键切换原文/译文 · 拖拽或点击其他区域重选 · Esc/右键取消";
+    if (hasResult) {
+      hintText = "区域内右键切换原文/译文 · Esc 重新选区 · 右键空白处退出";
     } else if (loading) {
-      hintText = payload.copyTextMode ? "正在识别文字…" : "正在翻译…";
+      hintText = "正在处理…";
+    } else if (selectionCss) {
+      hintText = "可拖动边框微调区域 · 点击下方工具栏选择操作 · Esc 重选";
     } else if ((payload.windows?.length ?? 0) > 0) {
-      hintText = "悬停点击自动框选软件窗口 · 拖拽自定义区域 · Esc/右键取消";
+      hintText = "悬停点击锁定软件窗口 · 或按住拖拽自定义区域 · Esc/右键取消";
     } else {
       hintText = "拖拽选择区域 · Esc/右键取消";
     }
   }
+
+  // Compute toolbar position anchored near bottom-right of selectionCss.
+  const toolbarStyle = (() => {
+    if (!selectionCss) return undefined;
+    const estToolbarH = 42;
+    const margin = 10;
+    const belowY = selectionCss.y + selectionCss.height + margin;
+    const aboveY = selectionCss.y - estToolbarH - margin;
+    let top: number;
+    if (belowY + estToolbarH <= viewport.height - 8) {
+      top = belowY;
+    } else if (aboveY >= 8) {
+      top = aboveY;
+    } else {
+      top = Math.max(8, selectionCss.y + selectionCss.height - estToolbarH - 12);
+    }
+    const rightAlignedLeft = selectionCss.x + selectionCss.width;
+    return {
+      top: `${top}px`,
+      right: `${Math.max(12, viewport.width - rightAlignedLeft)}px`,
+    };
+  })();
 
   return (
     <div
@@ -317,95 +474,156 @@ export function CaptureView() {
       id="capture-root"
       onContextMenu={(e) => {
         e.preventDefault();
-        if (resultImageBase64 && pointerWithinSelection(e.clientX, e.clientY)) {
+        if (hasResult && pointerWithinRect(e.clientX, e.clientY, selectionCss)) {
           setShowResult((prev) => !prev);
+          return;
+        }
+        if (selectionCss && !hasResult) {
+          resetToHover();
           return;
         }
         void cancelCapture();
       }}
       onMouseDown={(e) => {
         if (e.button !== 0 || loading || !payload) return;
+        // Ignore clicks on the floating toolbar itself.
+        if ((e.target as HTMLElement | null)?.closest("[data-capture-toolbar]")) {
+          return;
+        }
+
         const start = pointFromEvent(e.clientX, e.clientY);
-        mouseDownRef.current = true;
-        hasDraggedRef.current = false;
-        dragStartRef.current = start;
-        hoveredWindowAtDownRef.current = resultImageBase64
-          ? null
-          : hoveredWindow ?? findWindowAtPoint(e.clientX, e.clientY, payload);
+
+        if (selectionCss && !hasResult && pointerWithinRect(e.clientX, e.clientY, selectionCss)) {
+          interactionRef.current = {
+            kind: "move",
+            start,
+            origin: selectionCss,
+          };
+          return;
+        }
+
+        interactionRef.current = {
+          kind: "new",
+          start,
+          hoveredAtDown: selectionCss
+            ? null
+            : hoveredWindow ?? findWindowAtPoint(e.clientX, e.clientY, payload),
+          dragged: false,
+        };
       }}
       onMouseMove={(e) => {
         if (!payload || loading) return;
-        if (mouseDownRef.current && dragStartRef.current) {
+        const mode = interactionRef.current;
+        const bounds = getRootRect();
+
+        if (mode.kind === "resize") {
           const current = pointFromEvent(e.clientX, e.clientY);
-          const dist = Math.hypot(
-            current.x - dragStartRef.current.x,
-            current.y - dragStartRef.current.y,
+          const next = applyResize(
+            mode.origin,
+            mode.handle,
+            current.x - mode.start.x,
+            current.y - mode.start.y,
+            bounds,
           );
-          if (!hasDraggedRef.current && dist >= 5) {
-            hasDraggedRef.current = true;
+          selectionImageRef.current = cssRectToImageRect(next, payload);
+          setSelectionCss(next);
+          return;
+        }
+
+        if (mode.kind === "move") {
+          const current = pointFromEvent(e.clientX, e.clientY);
+          const dx = current.x - mode.start.x;
+          const dy = current.y - mode.start.y;
+          const next: CssRect = {
+            x: clamp(mode.origin.x + dx, 0, Math.max(0, bounds.width - mode.origin.width)),
+            y: clamp(mode.origin.y + dy, 0, Math.max(0, bounds.height - mode.origin.height)),
+            width: mode.origin.width,
+            height: mode.origin.height,
+          };
+          selectionImageRef.current = cssRectToImageRect(next, payload);
+          setSelectionCss(next);
+          return;
+        }
+
+        if (mode.kind === "new") {
+          const current = pointFromEvent(e.clientX, e.clientY);
+          const dist = Math.hypot(current.x - mode.start.x, current.y - mode.start.y);
+          if (!mode.dragged && dist >= 5) {
+            mode.dragged = true;
             selectionImageRef.current = null;
             setHoveredWindow(null);
             setResultImageBase64("");
+            setResultRegions([]);
             setError("");
+            setNotice("");
           }
-          if (hasDraggedRef.current) {
-            setSelectionCss(normalizeRect(dragStartRef.current, current, getRootRect()));
+          if (mode.dragged) {
+            setSelectionCss(normalizeRect(mode.start, current, bounds));
           }
           return;
         }
 
-        if (!resultImageBase64 && !selectionCss) {
+        if (!hasResult && !selectionCss) {
           setHoveredWindow(findWindowAtPoint(e.clientX, e.clientY, payload));
         }
       }}
       onMouseUp={(e) => {
         if (e.button === 2) {
-          if (resultImageBase64 && pointerWithinSelection(e.clientX, e.clientY)) {
+          return;
+        }
+        if (e.button !== 0 || !payload) return;
+        const mode = interactionRef.current;
+        interactionRef.current = { kind: "none" };
+
+        if (mode.kind === "resize" || mode.kind === "move") {
+          if (selectionCss) {
+            selectionImageRef.current = cssRectToImageRect(selectionCss, payload);
+          }
+          return;
+        }
+
+        if (mode.kind !== "new") return;
+
+        if (mode.dragged) {
+          const end = pointFromEvent(e.clientX, e.clientY);
+          const rectCss = normalizeRect(mode.start, end, getRootRect());
+          if (rectCss.width <= 4 || rectCss.height <= 4) {
+            resetToHover();
             return;
           }
-          void cancelCapture();
-          return;
-        }
-        if (e.button !== 0 || !mouseDownRef.current || !dragStartRef.current || !payload) return;
-
-        const didDrag = hasDraggedRef.current;
-        const start = dragStartRef.current;
-        const winAtDown = hoveredWindowAtDownRef.current;
-
-        mouseDownRef.current = false;
-        hasDraggedRef.current = false;
-        dragStartRef.current = null;
-        hoveredWindowAtDownRef.current = null;
-
-        if (didDrag) {
-          const end = pointFromEvent(e.clientX, e.clientY);
-          const rectCss = normalizeRect(start, end, getRootRect());
-          void submitSelection(rectCss);
+          selectionImageRef.current = cssRectToImageRect(rectCss, payload);
+          setSelectionCss(rectCss);
+          setHoveredWindow(null);
           return;
         }
 
-        if (resultImageBase64) {
-          if (!pointerWithinSelection(e.clientX, e.clientY)) {
-            selectionImageRef.current = null;
-            setSelectionCss(null);
-            setResultImageBase64("");
-            setError("");
+        // Single click without dragging:
+        if (hasResult) {
+          if (!pointerWithinRect(e.clientX, e.clientY, selectionCss)) {
+            resetToHover();
             setHoveredWindow(findWindowAtPoint(e.clientX, e.clientY, payload));
           }
           return;
         }
 
-        if (winAtDown) {
-          void submitSelectionRect(winAtDown.rect);
+        if (selectionCss) {
+          if (!pointerWithinRect(e.clientX, e.clientY, selectionCss)) {
+            resetToHover();
+            setHoveredWindow(findWindowAtPoint(e.clientX, e.clientY, payload));
+          }
           return;
         }
 
-        selectionImageRef.current = null;
-        setSelectionCss(null);
-        setError("");
-        setHoveredWindow(findWindowAtPoint(e.clientX, e.clientY, payload));
+        if (mode.hoveredAtDown) {
+          selectionImageRef.current = mode.hoveredAtDown.rect;
+          setSelectionCss(imageRectToCssRect(mode.hoveredAtDown.rect, payload));
+          setHoveredWindow(null);
+          setError("");
+          setNotice("");
+          return;
+        }
       }}
-      className="fixed inset-0 cursor-crosshair overflow-hidden"
+      className="fixed inset-0 cursor-crosshair overflow-hidden select-none"
     >
       {previewSrc && (
         <img
@@ -437,9 +655,11 @@ export function CaptureView() {
               width: `${activeBoxCss.width}px`,
               height: `${activeBoxCss.height}px`,
             }}
-            className="pointer-events-none absolute overflow-hidden"
+            className={`absolute overflow-hidden ${
+              isLockedSelection && !hasResult ? "cursor-move" : "pointer-events-none"
+            }`}
           >
-            {previewSrc && !(resultImageBase64 && showResult) && (
+            {previewSrc && !(hasResult && showResult) && (
               <img
                 id="capture-selection-preview"
                 src={previewSrc}
@@ -462,6 +682,30 @@ export function CaptureView() {
               />
             )}
 
+            {selectionCss && !resultImageBase64 && resultRegions.length > 0 && showResult && (
+              <>
+                {previewSrc && (
+                  <img
+                    src={previewSrc}
+                    alt=""
+                    style={{
+                      width: `${viewport.width}px`,
+                      height: `${viewport.height}px`,
+                      transform: `translate(${-activeBoxCss.x}px, ${-activeBoxCss.y}px)`,
+                    }}
+                    className="pointer-events-none absolute top-0 left-0 max-w-none"
+                  />
+                )}
+                <RegionOverlayLayer
+                  regions={resultRegions}
+                  sourceWidth={resultSourceSize.w}
+                  sourceHeight={resultSourceSize.h}
+                  containerWidth={activeBoxCss.width}
+                  containerHeight={activeBoxCss.height}
+                />
+              </>
+            )}
+
             <div
               className={`pointer-events-none absolute inset-0 border-2 ${
                 selectionCss ? "border-[#4A9EFF]" : "border-[#07C160]"
@@ -475,6 +719,49 @@ export function CaptureView() {
               />
             )}
           </div>
+
+          {/* 8 resize handles when selection is locked and awaiting action */}
+          {selectionCss && !hasResult && !loading && (
+            <div
+              style={{
+                left: `${selectionCss.x}px`,
+                top: `${selectionCss.y}px`,
+                width: `${selectionCss.width}px`,
+                height: `${selectionCss.height}px`,
+              }}
+              className="pointer-events-none absolute"
+            >
+              {(["nw", "n", "ne", "e", "se", "s", "sw", "w"] as ResizeHandle[]).map((handle) => {
+                const posClass = {
+                  nw: "-top-1 -left-1",
+                  n: "-top-1 left-1/2 -translate-x-1/2",
+                  ne: "-top-1 -right-1",
+                  e: "top-1/2 -right-1 -translate-y-1/2",
+                  se: "-bottom-1 -right-1",
+                  s: "-bottom-1 left-1/2 -translate-x-1/2",
+                  sw: "-bottom-1 -left-1",
+                  w: "top-1/2 -left-1 -translate-y-1/2",
+                }[handle];
+                return (
+                  <div
+                    key={handle}
+                    style={{ cursor: HANDLE_CURSORS[handle] }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      if (e.button !== 0 || !selectionCss) return;
+                      interactionRef.current = {
+                        kind: "resize",
+                        handle,
+                        start: pointFromEvent(e.clientX, e.clientY),
+                        origin: selectionCss,
+                      };
+                    }}
+                    className={`pointer-events-auto absolute h-2.5 w-2.5 rounded-[2px] border border-[#4A9EFF] bg-white shadow ${posClass}`}
+                  />
+                );
+              })}
+            </div>
+          )}
 
           {activeBoxLabel && (
             <div
@@ -497,19 +784,108 @@ export function CaptureView() {
         </>
       )}
 
+      {/* Floating action toolbar after locking a selection */}
+      {selectionCss && !loading && toolbarStyle && (
+        <div
+          id="capture-toolbar"
+          data-capture-toolbar
+          style={toolbarStyle}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          className="fixed z-30 flex items-center gap-1 rounded-xl border border-white/15 bg-gray-900/90 px-2 py-1.5 text-xs font-medium text-white shadow-xl backdrop-blur-md"
+        >
+          {!hasResult ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void runSelectionAction("translate")}
+                className="cursor-pointer rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
+              >
+                截图翻译
+              </button>
+              <button
+                type="button"
+                onClick={() => void runSelectionAction("copy_text")}
+                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+              >
+                识别文字
+              </button>
+              <span className="mx-0.5 h-3.5 w-px bg-white/15" />
+              <button
+                type="button"
+                onClick={() => void runLiveAction("in_place")}
+                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+              >
+                原位实时
+              </button>
+              <button
+                type="button"
+                onClick={() => void runLiveAction("mirror")}
+                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+              >
+                副屏实时
+              </button>
+              <span className="mx-0.5 h-3.5 w-px bg-white/15" />
+              <button
+                type="button"
+                onClick={() => void cancelCapture()}
+                className="cursor-pointer rounded-lg px-2 py-1 text-gray-400 transition hover:bg-white/10 hover:text-white"
+              >
+                取消
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowResult((prev) => !prev)}
+                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+              >
+                {showResult ? "看原文" : "看译文"}
+              </button>
+              {resultRegions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleCopyTranslated()}
+                  className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                >
+                  复制译文
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={resetToHover}
+                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+              >
+                重选区域
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelCapture()}
+                className="cursor-pointer rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
+              >
+                完成
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <div
         id="capture-hint"
-        className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom,0px)+72px)] left-1/2 -translate-x-1/2 rounded-full bg-gray-900/80 px-3.5 py-2.5 text-[13px] leading-none text-gray-50 backdrop-blur-md"
+        className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom,0px)+18px)] left-1/2 -translate-x-1/2 rounded-full bg-gray-900/80 px-3.5 py-2 text-[12px] leading-none text-gray-200 backdrop-blur-md"
       >
         {hintText}
       </div>
 
-      {error && (
+      {(error || notice) && (
         <div
-          id="capture-error"
-          className="pointer-events-none fixed bottom-[22px] left-1/2 -translate-x-1/2 rounded-full bg-red-700/90 px-3.5 py-2.5 text-[13px] leading-none text-gray-50 backdrop-blur-md"
+          id="capture-feedback"
+          className={`pointer-events-none fixed bottom-[56px] left-1/2 max-w-[80vw] -translate-x-1/2 truncate rounded-full px-3.5 py-2 text-[12px] leading-none text-gray-50 backdrop-blur-md ${
+            error ? "bg-red-700/90" : "bg-gray-900/85"
+          }`}
         >
-          {error}
+          {error || notice}
         </div>
       )}
     </div>

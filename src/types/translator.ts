@@ -7,6 +7,10 @@ export type TextTranslateEngine =
   | "iciba"
   | "llm";
 
+export type OcrEngine = "apple_vision" | "rapid_ocr";
+
+export type ImageTranslateMode = "ocr_pipeline" | "youdao";
+
 export type ProxyMode = "system" | "custom" | "none";
 
 export interface LlmConfig {
@@ -44,6 +48,13 @@ export interface TranslatorSettings {
   popupShortcut: string | null;
   proxyMode: ProxyMode;
   customProxy: string;
+  ocrEngine: OcrEngine;
+  rapidOcrUrl: string;
+  imageTranslateMode: ImageTranslateMode;
+  liveFrameIntervalMs: number;
+  liveMirrorFps: number;
+  liveMirrorKeyframeOnly: boolean;
+  liveInPlaceSubtitleBar: boolean;
 }
 
 export interface TextTranslationResult {
@@ -85,9 +96,30 @@ export interface CaptureViewPayload {
   windows?: CaptureWindowInfo[];
 }
 
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface OverlayRegion {
+  rect: BoundingBox;
+  localRect: BoundingBox;
+  source: string;
+  translated: string;
+  color: string;
+  textColor?: string;
+  fontSize?: number;
+  lines?: { text: string }[];
+}
+
 export interface CaptureTranslatePayload {
   imageBase64: string;
   selection: CaptureRect;
+  regions?: OverlayRegion[];
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 export interface OverlayPayload {

@@ -1,4 +1,10 @@
-import type { ProxyMode, TextTranslateEngine, TranslatorSettings } from "../types/translator";
+import type {
+  ImageTranslateMode,
+  OcrEngine,
+  ProxyMode,
+  TextTranslateEngine,
+  TranslatorSettings,
+} from "../types/translator";
 
 export interface LanguageOption {
   value: string;
@@ -40,6 +46,62 @@ export const TRANSLATE_ENGINES: { value: TextTranslateEngine; label: string }[] 
   { value: "yandex", label: "Yandex" },
   { value: "iciba", label: "词霸" },
   { value: "llm", label: "AI 大模型" },
+];
+
+export const IMAGE_TRANSLATE_MODES: { value: ImageTranslateMode; label: string }[] = [
+  { value: "ocr_pipeline", label: "OCR + 翻译引擎" },
+  { value: "youdao", label: "有道图片翻译" },
+];
+
+export const OCR_ENGINES: { value: OcrEngine; label: string }[] = [
+  { value: "apple_vision", label: "Apple Vision (系统原生)" },
+  { value: "rapid_ocr", label: "RapidOCR (本地服务)" },
+];
+
+export interface LlmPreset {
+  id: string;
+  label: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  prompt: string;
+  autoPrompt: string;
+}
+
+export const HY_MT_PROMPT =
+  "Translate the following text from {from} into {to}. Output only the translated text without any explanation.";
+
+export const HY_MT_AUTO_PROMPT =
+  "Translate the following text into {to}. Output only the translated text without any explanation.";
+
+export const LLM_PRESETS: LlmPreset[] = [
+  {
+    id: "hymt-ollama",
+    label: "HY-MT1.5 (Ollama)",
+    baseUrl: "http://127.0.0.1:11434/v1/chat/completions",
+    model: "hy-mt1.5-1.8b",
+    apiKey: "",
+    prompt: HY_MT_PROMPT,
+    autoPrompt: HY_MT_AUTO_PROMPT,
+  },
+  {
+    id: "hymt-llamacpp",
+    label: "HY-MT1.5 (llama.cpp)",
+    baseUrl: "http://127.0.0.1:8080/v1/chat/completions",
+    model: "hy-mt1.5-1.8b",
+    apiKey: "",
+    prompt: HY_MT_PROMPT,
+    autoPrompt: HY_MT_AUTO_PROMPT,
+  },
+  {
+    id: "hymt-mlx",
+    label: "HY-MT1.5 (MLX)",
+    baseUrl: "http://127.0.0.1:8081/v1/chat/completions",
+    model: "hy-mt1.5-1.8b",
+    apiKey: "",
+    prompt: HY_MT_PROMPT,
+    autoPrompt: HY_MT_AUTO_PROMPT,
+  },
 ];
 
 export const PROXY_MODES: { value: ProxyMode; label: string }[] = [
@@ -88,5 +150,12 @@ export function createDefaultSettings(): TranslatorSettings {
     popupShortcut: null,
     proxyMode: "system",
     customProxy: "",
+    ocrEngine: "apple_vision",
+    rapidOcrUrl: "http://127.0.0.1:9003/ocr",
+    imageTranslateMode: "ocr_pipeline",
+    liveFrameIntervalMs: 400,
+    liveMirrorFps: 15,
+    liveMirrorKeyframeOnly: true,
+    liveInPlaceSubtitleBar: false,
   };
 }

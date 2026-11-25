@@ -134,6 +134,8 @@ export function App() {
   }, [
     measureSettingsHeight,
     screenPermission?.supported,
+    settings?.imageTranslateMode,
+    settings?.ocrEngine,
     settings?.proxyMode,
     settings?.textTranslateEngine,
     settingsOpen,
@@ -192,7 +194,14 @@ export function App() {
     setAlternatives([]);
     setDetectedLang("");
 
-    if (activeSettings.textTranslateEngine === "llm" && !activeSettings.llmConfig.apiKey) {
+    const isLocalLlmUrl = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(:\d+)?/i.test(
+      activeSettings.llmConfig.baseUrl.trim(),
+    );
+    if (
+      activeSettings.textTranslateEngine === "llm" &&
+      !activeSettings.llmConfig.apiKey &&
+      !isLocalLlmUrl
+    ) {
       if (seq === translateSeqRef.current) {
         setTextLoading(false);
         setStatus("请先在设置中配置 API Key");

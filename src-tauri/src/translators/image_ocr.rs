@@ -156,6 +156,8 @@ impl RawTranslationResponse {
                 } else {
                     region.color
                 },
+                text_color: "#FFFFFF".to_string(),
+                font_size: 0.0,
                 lines,
             });
         }

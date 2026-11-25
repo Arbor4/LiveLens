@@ -16,10 +16,12 @@ use crate::commands::overlay::OVERLAY_WINDOW_LABEL;
 use crate::commands::window::hide_main_window_before_capture;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    CaptureMode, CaptureRect, CaptureTranslatePayload, CaptureViewPayload, OcrTextResult,
-    ScreenCapturePermissionStatus, SelectionPayload,
+    CaptureMode, CaptureRect, CaptureTranslatePayload, CaptureViewPayload, ImageTranslateMode,
+    OcrTextResult, OverlayRegion, ScreenCapturePermissionStatus, SelectionPayload,
+    TranslationHistoryItem, TranslationPair,
 };
 use crate::state::{ActiveCaptureSession, SharedState};
+use crate::translators::ocr;
 
 const CAPTURE_WINDOW_LABEL: &str = "capture";
 
@@ -349,13 +351,19 @@ pub async fn submit_capture_selection(
     app: AppHandle,
     state: State<'_, SharedState>,
     selection: CaptureRect,
+    mode: Option<String>,
 ) -> AppResult<CaptureTranslatePayload> {
     if selection.width <= 4 || selection.height <= 4 {
         return Err(AppError::Capture("selection too small".into()));
     }
 
-    let mode = *state.capture_mode.read().await;
-    if mode == CaptureMode::CopyText {
+    let effective_mode = match mode.as_deref() {
+        Some("copy_text") => CaptureMode::CopyText,
+        Some("translate") => CaptureMode::Translate,
+        _ => *state.capture_mode.read().await,
+    };
+
+    if effective_mode == CaptureMode::CopyText {
         emit_workflow_state(&app, "正在识别文字…", "", true).ok();
 
         let result = async {
@@ -391,10 +399,13 @@ pub async fn submit_capture_selection(
                 }
                 let _ = close_capture_window(&app);
                 reset_capture_state(state.inner()).await;
-                emit_workflow_state(&app, "", "", false).ok();
+                emit_workflow_state(&app, "已复制识别文字", "ok", false).ok();
                 Ok(CaptureTranslatePayload {
                     image_base64: String::new(),
                     selection,
+                    regions: Vec::new(),
+                    image_width: selection.width,
+                    image_height: selection.height,
                 })
             }
             Err(err) => {
@@ -439,15 +450,19 @@ pub async fn submit_capture_selection(
                 )
             };
 
-            let png_bytes = encode_cropped_png(crop, selection.width, selection.height).await?;
+            let png_bytes = encode_cropped_png(crop.clone(), selection.width, selection.height).await?;
             #[cfg(target_os = "macos")]
             capture::debug_write_bytes("03_crop.png", &png_bytes);
-            let image_base64 =
-                translate_capture_png(state.inner(), png_bytes, &selection, scale_factor).await?;
+            let (image_base64, regions) =
+                translate_capture_png(state.inner(), &crop, png_bytes, &selection, scale_factor)
+                    .await?;
 
             Ok::<CaptureTranslatePayload, AppError>(CaptureTranslatePayload {
                 image_base64,
                 selection,
+                regions,
+                image_width: selection.width,
+                image_height: selection.height,
             })
         }
         .await;
@@ -541,7 +556,7 @@ async fn handle_capture_events(
                         height: h,
                     };
 
-                    let png_bytes = match encode_cropped_png(crop, w, h).await {
+                    let png_bytes = match encode_cropped_png(crop.clone(), w, h).await {
                         Ok(bytes) => bytes,
                         Err(e) => {
                             tracing::error!("PNG encode failed: {e}");
@@ -550,8 +565,8 @@ async fn handle_capture_events(
                         }
                     };
 
-                    match translate_capture_png(&state, png_bytes, &rect, scale_factor).await {
-                        Ok(image_base64) => {
+                    match translate_capture_png(&state, &crop, png_bytes, &rect, scale_factor).await {
+                        Ok((image_base64, _regions)) => {
                             if !image_base64.is_empty() {
                                 match BASE64_STANDARD.decode(&image_base64) {
                                     Ok(jpeg_bytes) => {
@@ -683,12 +698,18 @@ async fn encode_cropped_png(crop: Vec<u8>, w: u32, h: u32) -> AppResult<Vec<u8>>
         .map_err(|e| AppError::Capture(format!("PNG encode task failed: {e}")))?
 }
 
+#[tauri::command]
+pub async fn copy_capture_text(text: String) -> AppResult<()> {
+    copy_to_clipboard(&text)
+}
+
 async fn translate_capture_png(
     state: &SharedState,
+    crop_rgba: &[u8],
     png_bytes: Vec<u8>,
     rect: &CaptureRect,
     scale_factor: f64,
-) -> AppResult<String> {
+) -> AppResult<(String, Vec<OverlayRegion>)> {
     let (settings, monitor_x, monitor_y, monitor_width, monitor_height) = {
         let guard = state.capture_session.read().await;
         let session = guard
@@ -702,61 +723,108 @@ async fn translate_capture_png(
             session.monitor_height,
         )
     };
-    let response = state
-        .api_client
-        .translate_image_bytes(
-            png_bytes,
-            "capture.png".into(),
-            "image/png".into(),
-            settings.from_lang.clone(),
-            settings.to_lang.clone(),
-            SelectionPayload {
-                x: 0.0,
-                y: 0.0,
-                width: rect.width as f64,
-                height: rect.height as f64,
-                monitor_id: format!(
-                    "capture:{}:{}:{}:{}",
-                    rect.x, rect.y, rect.width, rect.height
-                ),
-                monitor_x,
-                monitor_y,
-                monitor_width,
-                monitor_height,
-                monitor_scale_factor: scale_factor,
-            },
-            None,
-            &settings,
-        )
-        .await?;
 
-    tracing::info!(
-        "API response: request_id={}, rendered_image len={}, regions={}",
-        response.request_id,
-        response.rendered_image_base64.len(),
-        response.regions.len()
+    let selection = SelectionPayload {
+        x: 0.0,
+        y: 0.0,
+        width: rect.width as f64,
+        height: rect.height as f64,
+        monitor_id: format!(
+            "capture:{}:{}:{}:{}",
+            rect.x, rect.y, rect.width, rect.height
+        ),
+        monitor_x,
+        monitor_y,
+        monitor_width,
+        monitor_height,
+        monitor_scale_factor: scale_factor,
+    };
+
+    if settings.image_translate_mode == ImageTranslateMode::Youdao {
+        let response = state
+            .api_client
+            .translate_image_bytes(
+                png_bytes,
+                "capture.png".into(),
+                "image/png".into(),
+                settings.from_lang.clone(),
+                settings.to_lang.clone(),
+                selection,
+                None,
+                &settings,
+            )
+            .await?;
+
+        tracing::info!(
+            "API response: request_id={}, rendered_image len={}, regions={}",
+            response.request_id,
+            response.rendered_image_base64.len(),
+            response.regions.len()
+        );
+        #[cfg(target_os = "macos")]
+        capture::debug_log(format!(
+            "[translate] request_id={} rendered_b64_len={} regions={}",
+            response.request_id,
+            response.rendered_image_base64.len(),
+            response.regions.len()
+        ));
+
+        if let Ok(mut history) = state.config_store.load_history().await {
+            history.push(response.history_item.clone());
+            let _ = state.config_store.save_history(&history).await;
+        }
+
+        #[cfg(target_os = "macos")]
+        if !response.rendered_image_base64.is_empty() {
+            if let Ok(bytes) = BASE64_STANDARD.decode(&response.rendered_image_base64) {
+                capture::debug_write_bytes("04_translated.jpg", &bytes);
+            }
+        }
+
+        return Ok((response.rendered_image_base64, response.regions));
+    }
+
+    let lines = ocr::recognize_image_bytes(
+        &state.http_client,
+        settings.ocr_engine,
+        &settings.rapid_ocr_url,
+        png_bytes,
+        &settings.from_lang,
+    )
+    .await?;
+    let paragraphs = ocr::group_ocr_lines_into_paragraphs(lines);
+    let regions = ocr::translate_paragraphs_to_regions(
+        paragraphs,
+        crop_rgba,
+        rect.width,
+        rect.height,
+        &selection,
+        &settings,
+        &state.text_translator,
+        &state.translation_cache,
+    )
+    .await?;
+
+    let pairs = regions
+        .iter()
+        .map(|r| TranslationPair {
+            source: r.source.clone(),
+            target: r.translated.clone(),
+        })
+        .collect::<Vec<_>>();
+    let history_item = TranslationHistoryItem::from_response(
+        selection,
+        uuid::Uuid::new_v4().to_string(),
+        settings.from_lang.clone(),
+        settings.to_lang.clone(),
+        pairs,
     );
-    #[cfg(target_os = "macos")]
-    capture::debug_log(format!(
-        "[translate] request_id={} rendered_b64_len={} regions={}",
-        response.request_id,
-        response.rendered_image_base64.len(),
-        response.regions.len()
-    ));
-
     if let Ok(mut history) = state.config_store.load_history().await {
-        history.push(response.history_item.clone());
+        history.push(history_item);
         let _ = state.config_store.save_history(&history).await;
     }
 
-    #[cfg(target_os = "macos")]
-    if !response.rendered_image_base64.is_empty() {
-        if let Ok(bytes) = BASE64_STANDARD.decode(&response.rendered_image_base64) {
-            capture::debug_write_bytes("04_translated.jpg", &bytes);
-        }
-    }
-
-    Ok(response.rendered_image_base64)
+    Ok((String::new(), regions))
 }
 
 async fn ocr_extract_text(
@@ -778,6 +846,29 @@ async fn ocr_extract_text(
             session.monitor_height,
         )
     };
+
+    if settings.image_translate_mode == ImageTranslateMode::OcrPipeline {
+        let lines = ocr::recognize_image_bytes(
+            &state.http_client,
+            settings.ocr_engine,
+            &settings.rapid_ocr_url,
+            png_bytes,
+            &settings.from_lang,
+        )
+        .await?;
+        let paragraphs = ocr::group_ocr_lines_into_paragraphs(lines);
+        let text = paragraphs
+            .into_iter()
+            .map(|p| p.text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Ok(OcrTextResult {
+            text,
+            request_id: uuid::Uuid::new_v4().to_string(),
+            lan_from: settings.from_lang,
+        });
+    }
+
     let response = state
         .api_client
         .translate_image_bytes(

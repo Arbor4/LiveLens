@@ -1,9 +1,10 @@
 use tauri::State;
 
 use crate::error::AppResult;
-use crate::models::{ProxyMode, TextTranslationResult};
+use crate::models::{LlmConfig, ProxyMode, TextTranslationResult};
 use crate::state::SharedState;
 use crate::translators::builtin::{normalize_proxy, system_proxy_url};
+use crate::translators::ocr;
 
 #[tauri::command]
 pub async fn translate_text(
@@ -36,4 +37,28 @@ pub async fn translate_text(
             proxy_url.as_deref(),
         )
         .await
+}
+
+#[tauri::command]
+pub async fn test_llm_connection(
+    state: State<'_, SharedState>,
+    llm_config: Option<LlmConfig>,
+) -> AppResult<String> {
+    let config = match llm_config {
+        Some(cfg) => cfg,
+        None => state.settings.read().await.llm_config.clone(),
+    };
+    state.text_translator.test_llm_connection(&config).await
+}
+
+#[tauri::command]
+pub async fn test_rapid_ocr_connection(
+    state: State<'_, SharedState>,
+    rapid_ocr_url: Option<String>,
+) -> AppResult<String> {
+    let url = match rapid_ocr_url {
+        Some(u) => u,
+        None => state.settings.read().await.rapid_ocr_url.clone(),
+    };
+    ocr::test_rapid_ocr_connection(&state.http_client, &url).await
 }

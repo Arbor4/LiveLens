@@ -14,6 +14,46 @@ pub enum TextTranslateEngine {
     Llm,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OcrEngine {
+    AppleVision,
+    RapidOcr,
+}
+
+impl Default for OcrEngine {
+    fn default() -> Self {
+        #[cfg(target_os = "macos")]
+        {
+            Self::AppleVision
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Self::RapidOcr
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageTranslateMode {
+    OcrPipeline,
+    Youdao,
+}
+
+impl Default for ImageTranslateMode {
+    fn default() -> Self {
+        #[cfg(target_os = "macos")]
+        {
+            Self::OcrPipeline
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Self::Youdao
+        }
+    }
+}
+
 impl Default for TextTranslateEngine {
     fn default() -> Self {
         Self::Bing
@@ -128,6 +168,40 @@ pub struct TranslatorSettings {
     pub proxy_mode: ProxyMode,
     #[serde(default)]
     pub custom_proxy: String,
+    #[serde(default)]
+    pub ocr_engine: OcrEngine,
+    #[serde(default = "default_rapid_ocr_url")]
+    pub rapid_ocr_url: String,
+    #[serde(default)]
+    pub image_translate_mode: ImageTranslateMode,
+    #[serde(default = "default_live_frame_interval_ms")]
+    pub live_frame_interval_ms: u64,
+    #[serde(default = "default_live_mirror_fps")]
+    pub live_mirror_fps: u32,
+    #[serde(default = "default_true")]
+    pub live_mirror_keyframe_only: bool,
+    #[serde(default)]
+    pub live_in_place_subtitle_bar: bool,
+}
+
+fn default_rapid_ocr_url() -> String {
+    "http://127.0.0.1:9003/ocr".to_string()
+}
+
+fn default_live_frame_interval_ms() -> u64 {
+    400
+}
+
+fn default_live_mirror_fps() -> u32 {
+    15
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_text_color() -> String {
+    "#FFFFFF".to_string()
 }
 
 impl Default for TranslatorSettings {
@@ -172,6 +246,13 @@ impl Default for TranslatorSettings {
             popup_shortcut: None,
             proxy_mode: ProxyMode::default(),
             custom_proxy: String::new(),
+            ocr_engine: OcrEngine::default(),
+            rapid_ocr_url: default_rapid_ocr_url(),
+            image_translate_mode: ImageTranslateMode::default(),
+            live_frame_interval_ms: default_live_frame_interval_ms(),
+            live_mirror_fps: default_live_mirror_fps(),
+            live_mirror_keyframe_only: true,
+            live_in_place_subtitle_bar: false,
         }
     }
 }
@@ -246,6 +327,10 @@ pub struct OverlayRegion {
     pub source: String,
     pub translated: String,
     pub color: String,
+    #[serde(default = "default_text_color")]
+    pub text_color: String,
+    #[serde(default)]
+    pub font_size: f64,
     pub lines: Vec<RegionLine>,
 }
 
@@ -291,7 +376,7 @@ pub struct TextTranslationResult {
     pub alternatives: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureRect {
     pub x: u32,
@@ -340,6 +425,12 @@ pub struct OcrTextResult {
 pub struct CaptureTranslatePayload {
     pub image_base64: String,
     pub selection: CaptureRect,
+    #[serde(default)]
+    pub regions: Vec<OverlayRegion>,
+    #[serde(default)]
+    pub image_width: u32,
+    #[serde(default)]
+    pub image_height: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

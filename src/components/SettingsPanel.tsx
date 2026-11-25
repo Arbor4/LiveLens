@@ -1,12 +1,18 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import {
   DEFAULT_LLM_AUTO_PROMPT,
   DEFAULT_LLM_PROMPT,
+  IMAGE_TRANSLATE_MODES,
+  LLM_PRESETS,
+  OCR_ENGINES,
   PROXY_MODES,
   TRANSLATE_ENGINES,
 } from "../constants/translator";
+import { invokeCommand } from "../lib/tauri";
 import type {
+  ImageTranslateMode,
   LlmConfig,
+  OcrEngine,
   ProxyMode,
   ScreenCapturePermissionStatus,
   TextTranslateEngine,
@@ -37,9 +43,44 @@ export function SettingsPanel({
   onResetScreenPermission,
   onOpenScreenPermissionSettings,
 }: SettingsPanelProps) {
+  const [ocrTestMsg, setOcrTestMsg] = useState("");
+  const [ocrTesting, setOcrTesting] = useState(false);
+  const [llmTestMsg, setLlmTestMsg] = useState("");
+  const [llmTesting, setLlmTesting] = useState(false);
+
   if (!open) {
     return null;
   }
+
+  const handleTestRapidOcr = async () => {
+    setOcrTesting(true);
+    setOcrTestMsg("");
+    try {
+      const msg = await invokeCommand<string>("test_rapid_ocr_connection", {
+        rapidOcrUrl: settings.rapidOcrUrl,
+      });
+      setOcrTestMsg(msg);
+    } catch (err) {
+      setOcrTestMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setOcrTesting(false);
+    }
+  };
+
+  const handleTestLlm = async () => {
+    setLlmTesting(true);
+    setLlmTestMsg("");
+    try {
+      const msg = await invokeCommand<string>("test_llm_connection", {
+        llmConfig: settings.llmConfig,
+      });
+      setLlmTestMsg(msg);
+    } catch (err) {
+      setLlmTestMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLlmTesting(false);
+    }
+  };
 
   return (
     <section
@@ -78,6 +119,107 @@ export function SettingsPanel({
             })}
           </div>
         </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
+            图片翻译模式
+          </span>
+          <div className="flex rounded-lg bg-zinc-100 p-0.5">
+            {IMAGE_TRANSLATE_MODES.map((mode) => {
+              const active = settings.imageTranslateMode === mode.value;
+              return (
+                <button
+                  key={mode.value}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdateSettings((prev) => ({
+                      ...prev,
+                      imageTranslateMode: mode.value as ImageTranslateMode,
+                    }));
+                  }}
+                  className={`cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    active
+                      ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                      : "text-[#6B7280] hover:text-[#111827]"
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {settings.imageTranslateMode === "ocr_pipeline" && (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
+                OCR 引擎
+              </span>
+              <div className="flex rounded-lg bg-zinc-100 p-0.5">
+                {OCR_ENGINES.map((ocr) => {
+                  const active = settings.ocrEngine === ocr.value;
+                  return (
+                    <button
+                      key={ocr.value}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateSettings((prev) => ({
+                          ...prev,
+                          ocrEngine: ocr.value as OcrEngine,
+                        }));
+                      }}
+                      className={`cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        active
+                          ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                          : "text-[#6B7280] hover:text-[#111827]"
+                      }`}
+                    >
+                      {ocr.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {settings.ocrEngine === "rapid_ocr" && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label
+                    htmlFor="rapid-ocr-url"
+                    className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]"
+                  >
+                    RapidOCR 地址
+                  </label>
+                  <input
+                    id="rapid-ocr-url"
+                    type="text"
+                    value={settings.rapidOcrUrl || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      onUpdateSettings((prev) => ({ ...prev, rapidOcrUrl: value.trim() }));
+                    }}
+                    placeholder="http://127.0.0.1:9003/ocr"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-[#F3F4F6] px-2.5 py-1 text-right text-xs text-[#111827] outline-none transition placeholder:text-zinc-300 focus:border-[#FFCC00]"
+                  />
+                  <button
+                    type="button"
+                    disabled={ocrTesting}
+                    onClick={() => void handleTestRapidOcr()}
+                    className="shrink-0 cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
+                  >
+                    {ocrTesting ? "测试中…" : "测试"}
+                  </button>
+                </div>
+                {ocrTestMsg && (
+                  <div className="text-right text-[11px] text-[#6B7280]">{ocrTestMsg}</div>
+                )}
+              </div>
+            )}
+          </>
+        )}
 
         <div className="flex items-center justify-between gap-3">
           <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
@@ -247,6 +389,32 @@ export function SettingsPanel({
 
       {settings.textTranslateEngine === "llm" && (
         <div className="settings-section mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
+              本地模型预设
+            </span>
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {LLM_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() =>
+                    onUpdateLlmConfig({
+                      baseUrl: preset.baseUrl,
+                      model: preset.model,
+                      apiKey: preset.apiKey,
+                      prompt: preset.prompt,
+                      autoPrompt: preset.autoPrompt,
+                    })
+                  }
+                  className="cursor-pointer rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800 transition hover:bg-amber-100"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between gap-3">
             <label
               htmlFor="llm-base-url"
@@ -259,7 +427,7 @@ export function SettingsPanel({
               type="text"
               value={settings.llmConfig.baseUrl}
               onChange={(e) => onUpdateLlmConfig({ baseUrl: e.target.value.trim() })}
-              placeholder="https://api.openai.com/v1/chat/completions"
+              placeholder="http://127.0.0.1:8080/v1/chat/completions"
               className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-[#F3F4F6] px-2.5 py-1 text-right text-xs text-[#111827] outline-none transition placeholder:text-zinc-300 focus:border-[#FFCC00]"
             />
           </div>
@@ -269,19 +437,19 @@ export function SettingsPanel({
               htmlFor="llm-api-key"
               className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]"
             >
-              API Key
+              API Key (本地可留空)
             </label>
             <input
               id="llm-api-key"
               type="password"
               value={settings.llmConfig.apiKey}
               onChange={(e) => onUpdateLlmConfig({ apiKey: e.target.value.trim() })}
-              placeholder="sk-..."
+              placeholder="本地推理无需填写，云端填 sk-..."
               className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-[#F3F4F6] px-2.5 py-1 text-right text-xs text-[#111827] outline-none transition placeholder:text-zinc-300 focus:border-[#FFCC00]"
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2">
             <label
               htmlFor="llm-model"
               className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]"
@@ -293,10 +461,21 @@ export function SettingsPanel({
               type="text"
               value={settings.llmConfig.model}
               onChange={(e) => onUpdateLlmConfig({ model: e.target.value.trim() })}
-              placeholder="gpt-4o-mini"
+              placeholder="hy-mt1.5-1.8b"
               className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-[#F3F4F6] px-2.5 py-1 text-right text-xs text-[#111827] outline-none transition placeholder:text-zinc-300 focus:border-[#FFCC00]"
             />
+            <button
+              type="button"
+              disabled={llmTesting}
+              onClick={() => void handleTestLlm()}
+              className="shrink-0 cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
+            >
+              {llmTesting ? "测试中…" : "测试连接"}
+            </button>
           </div>
+          {llmTestMsg && (
+            <div className="text-right text-[11px] text-[#6B7280]">{llmTestMsg}</div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <label

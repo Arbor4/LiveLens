@@ -142,11 +142,12 @@ pub fn run() {
                 let api_client = YoudaoClient::new(general_http.clone());
                 let bing_client = BingTranslateClient::new(bing_http);
                 let builtin_client = BuiltinTranslateClient::new();
-                let llm_client = LlmTranslateClient::new(general_http);
+                let llm_client = LlmTranslateClient::new(general_http.clone());
                 let text_translator = TextTranslator::new(bing_client, builtin_client, llm_client);
                 app_handle.manage(SharedState::new(
                     config_store,
                     settings,
+                    general_http,
                     api_client,
                     text_translator,
                 ));
@@ -209,6 +210,7 @@ pub fn run() {
             commands::capture::cancel_capture,
             commands::capture::load_capture_payload,
             commands::capture::submit_capture_selection,
+            commands::capture::copy_capture_text,
             commands::capture::get_screen_capture_permission_status,
             commands::capture::reset_screen_capture_permission,
             commands::capture::open_screen_capture_settings,
@@ -216,6 +218,8 @@ pub fn run() {
             commands::overlay::load_overlay_payload,
             commands::overlay::close_overlay,
             commands::translate::translate_text,
+            commands::translate::test_llm_connection,
+            commands::translate::test_rapid_ocr_connection,
             commands::window::resize_main_window,
             commands::window::hide_window,
             commands::window::capture_debug_log
