@@ -1,0 +1,16 @@
+node_modules/
+target/
+src-tauri/target/
+src-tauri/Cargo.lock
+*.log
+*.tmp
+*.bak
+dist/
+out/
+notes/
+tools/
+*.jpg
+*.jpeg
+!assets/*.jpg
+!assets/*.png
+.idea
