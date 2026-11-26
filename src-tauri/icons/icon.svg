@@ -1,118 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <!-- Deep obsidian squircle gradient -->
-    <linearGradient id="bgGrad" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bgGrad" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#1E293B"/>
       <stop offset="55%" stop-color="#111827"/>
-      <stop offset="100%" stop-color="#090E1A"/>
+      <stop offset="100%" stop-color="#0B1120"/>
     </linearGradient>
 
-    <!-- Warm amber ambient glow behind the lens -->
-    <radialGradient id="ambientGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(292 268) rotate(90) scale(195)">
-      <stop offset="0%" stop-color="#FFCC00" stop-opacity="0.24"/>
-      <stop offset="55%" stop-color="#F59E0B" stop-opacity="0.06"/>
+    <radialGradient id="ambientGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(180)">
+      <stop offset="0%" stop-color="#FFCC00" stop-opacity="0.16"/>
       <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Subtle top-left glass rim highlight -->
-    <linearGradient id="rimGrad" x1="48" y1="48" x2="464" y2="464" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
-      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.06"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.09"/>
-    </linearGradient>
-
-    <!-- Source screen card surface -->
-    <linearGradient id="sourceCardGrad" x1="112" y1="122" x2="282" y2="292" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#3B4960" stop-opacity="0.92"/>
-      <stop offset="100%" stop-color="#1E293B" stop-opacity="0.80"/>
-    </linearGradient>
-
-    <!-- Golden-amber lens ring -->
-    <linearGradient id="lensGold" x1="202" y1="176" x2="392" y2="366" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFEA8A"/>
-      <stop offset="45%" stop-color="#FFCC00"/>
+    <linearGradient id="goldGrad" x1="188" y1="136" x2="376" y2="324" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE047"/>
+      <stop offset="50%" stop-color="#FFCC00"/>
       <stop offset="100%" stop-color="#F59E0B"/>
     </linearGradient>
 
-    <!-- Lens handle continuous amber-gold -->
-    <linearGradient id="handleGrad" x1="354" y1="328" x2="394" y2="368" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFCC00"/>
-      <stop offset="40%" stop-color="#F59E0B"/>
-      <stop offset="100%" stop-color="#D97706"/>
+    <linearGradient id="rimGrad" x1="48" y1="48" x2="464" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
     </linearGradient>
-
-    <!-- Bright optical lens glass interior -->
-    <radialGradient id="lensGlass" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(272 240) rotate(52) scale(130)">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="72%" stop-color="#FDFBF5"/>
-      <stop offset="100%" stop-color="#F3ECDA"/>
-    </radialGradient>
-
-    <!-- Viewfinder corner brackets -->
-    <linearGradient id="bracketGrad" x1="78" y1="78" x2="434" y2="434" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E2E8F0" stop-opacity="0.60"/>
-      <stop offset="100%" stop-color="#94A3B8" stop-opacity="0.38"/>
-    </linearGradient>
-
-    <!-- Elevated drop shadow for the foreground lens -->
-    <filter id="lensShadow" x="164" y="146" width="276" height="276" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
-      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
-      <feOffset dy="12"/>
-      <feGaussianBlur stdDeviation="16"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 0.015 0 0 0 0 0.03 0 0 0 0 0.08 0 0 0 0.62 0"/>
-      <feBlend mode="normal" in2="BackgroundImageFix" result="shadow1"/>
-      <feBlend mode="normal" in="SourceGraphic" in2="shadow1" result="shape"/>
-    </filter>
   </defs>
 
   <!-- App Icon Squircle Base -->
-  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
-  <rect width="512" height="512" rx="112" fill="url(#ambientGlow)"/>
-  <rect x="18" y="18" width="476" height="476" rx="96" stroke="url(#rimGrad)" stroke-width="2.5"/>
+  <rect width="512" height="512" rx="116" fill="url(#bgGrad)"/>
+  <rect width="512" height="512" rx="116" fill="url(#ambientGlow)"/>
+  <rect x="16" y="16" width="480" height="480" rx="100" stroke="url(#rimGrad)" stroke-width="2"/>
 
-  <!-- Screen Capture Viewfinder Corners ("幕") -->
-  <g stroke="url(#bracketGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M80 136 V98 Q80 80 98 80 H136"/>
-    <path d="M376 80 H414 Q432 80 432 98 V136"/>
-    <path d="M80 376 V414 Q80 432 98 432 H136"/>
-    <path d="M376 432 H414 Q432 432 432 414 V376"/>
-  </g>
+  <!-- Bottom-left L (Viewfinder Bracket) -->
+  <path d="M136 188 V332 Q136 376 180 376 H324" stroke="#F8FAFC" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- Source Screen Card (original text layer) -->
-  <g>
-    <rect x="114" y="122" width="174" height="174" rx="34" fill="url(#sourceCardGrad)" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2.5"/>
-    <!-- Stylized geometric "A" cleanly positioned in visible area -->
-    <path d="M144 218 L169 160 L194 218" stroke="#E2E8F0" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M153 200 H185" stroke="#E2E8F0" stroke-width="11.5" stroke-linecap="round"/>
-    <!-- Subtle untranslated text bars -->
-    <rect x="142" y="242" width="48" height="10" rx="5" fill="#94A3B8" fill-opacity="0.50"/>
-    <rect x="142" y="262" width="32" height="8" rx="4" fill="#94A3B8" fill-opacity="0.30"/>
-  </g>
+  <!-- Top-right Inverted L (Viewfinder Bracket) -->
+  <path d="M188 136 H332 Q376 136 376 180 V324" stroke="url(#goldGrad)" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- Foreground LiveLens Optical Lens ("译" in spotlight) -->
-  <g filter="url(#lensShadow)">
-    <!-- Sleek diagonal lens handle -->
-    <path d="M358 332 L392 366" stroke="url(#handleGrad)" stroke-width="24" stroke-linecap="round"/>
-
-    <!-- Crisp luminous lens glass interior -->
-    <circle cx="294" cy="268" r="88" fill="url(#lensGlass)"/>
-
-    <!-- Subtle inner ring depth -->
-    <circle cx="294" cy="268" r="84" stroke="#E5DEC9" stroke-opacity="0.65" stroke-width="2"/>
-
-    <!-- Bold geometric "文" translated mark inside lens -->
-    <g stroke-linecap="round" stroke-linejoin="round">
-      <!-- Warm amber top accent stroke -->
-      <path d="M291 219 L296 230" stroke="#F59E0B" stroke-width="13.5"/>
-      <!-- Horizontal stroke -->
-      <path d="M250 245 H338" stroke="#111827" stroke-width="13"/>
-      <!-- Sweeping diagonals -->
-      <path d="M317 247 C312 277 289 298 254 311" stroke="#111827" stroke-width="13"/>
-      <path d="M271 247 C276 277 299 298 334 311" stroke="#111827" stroke-width="13"/>
-    </g>
-
-    <!-- Golden-amber precision lens bezel -->
-    <circle cx="294" cy="268" r="92" stroke="url(#lensGold)" stroke-width="18"/>
-  </g>
+  <!-- Center Live Lens Core -->
+  <circle cx="256" cy="256" r="42" fill="url(#goldGrad)"/>
 </svg>
