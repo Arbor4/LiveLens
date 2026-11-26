@@ -412,7 +412,7 @@ fn open_in_place_overlay_windows(
     }
 
     // Open floating mini control pill near the overlay bottom/top edge.
-    let ctrl_w = 500.0;
+    let ctrl_w = 590.0;
     let ctrl_h = 44.0;
     let min_x = rt.monitor_x as f64 + 8.0;
     let max_x = (rt.monitor_x as f64 + mon_w - ctrl_w - 8.0).max(min_x);

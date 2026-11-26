@@ -120,6 +120,7 @@ export interface CaptureTranslatePayload {
   regions?: OverlayRegion[];
   imageWidth?: number;
   imageHeight?: number;
+  recognizedText?: string;
 }
 
 export type LiveDisplayMode = "in_place" | "mirror";

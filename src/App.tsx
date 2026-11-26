@@ -89,58 +89,10 @@ export function App() {
     [updateSettings],
   );
 
-  const measureSettingsHeight = useCallback(() => {
-    const appEl = appRef.current;
-    const panel = settingsPanelRef.current;
-    const header = appEl?.querySelector<HTMLElement>(".header-block");
-    const textBlock = appEl?.querySelector<HTMLElement>(".text-block");
-
-    if (appEl && header && textBlock && panel) {
-      const appCs = getComputedStyle(appEl);
-      const appPadding = parseFloat(appCs.paddingTop) + parseFloat(appCs.paddingBottom);
-      const appGap = parseFloat(appCs.rowGap || appCs.gap) || 0;
-
-      const panelCs = getComputedStyle(panel);
-      let panelContent = parseFloat(panelCs.paddingTop) + parseFloat(panelCs.paddingBottom);
-      panel.querySelectorAll<HTMLElement>(":scope > .settings-section").forEach((section) => {
-        if (getComputedStyle(section).display === "none") return;
-        const sCs = getComputedStyle(section);
-        panelContent +=
-          section.offsetHeight +
-          parseFloat(sCs.marginTop) +
-          parseFloat(sCs.marginBottom);
-      });
-
-      const total =
-        header.offsetHeight +
-        textBlock.offsetHeight +
-        panelContent +
-        appGap * 2 +
-        appPadding;
-      const measured = Math.ceil(total) + 2;
-      if (measured > 0) return measured;
-    }
-
-    let fallback = 560;
-    if (settingsRef.current?.textTranslateEngine === "llm") fallback += 200;
-    if (settingsRef.current?.proxyMode === "custom") fallback += 56;
-    return fallback;
-  }, []);
-
   useLayoutEffect(() => {
     if (!settings) return;
-    const targetHeight = settingsOpen ? measureSettingsHeight() : 400;
-    void invokeCommand("resize_main_window", { height: targetHeight }).catch(() => {});
-  }, [
-    measureSettingsHeight,
-    screenPermission?.supported,
-    settings?.imageTranslateMode,
-    settings?.ocrEngine,
-    settings?.proxyMode,
-    settings?.textTranslateEngine,
-    settingsOpen,
-    Boolean(settings),
-  ]);
+    void invokeCommand("resize_main_window", { height: 400 }).catch(() => {});
+  }, [Boolean(settings)]);
 
   const refreshScreenPermission = useCallback(async () => {
     try {
@@ -384,7 +336,11 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !hotkeyRecordingRef.current) {
-        void invokeCommand("hide_window").catch(() => {});
+        if (settingsOpen) {
+          setSettingsOpen(false);
+        } else {
+          void invokeCommand("hide_window").catch(() => {});
+        }
       }
     };
 
@@ -399,7 +355,7 @@ export function App() {
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("focus", onWindowFocus);
     };
-  }, [refreshScreenPermission]);
+  }, [refreshScreenPermission, settingsOpen]);
 
   if (fatalError) {
     return (
@@ -439,39 +395,41 @@ export function App() {
         onToggleSettings={() => setSettingsOpen((prev) => !prev)}
       />
 
-      <TranslationWorkspace
-        inputRef={inputRef}
-        inputText={inputText}
-        translatedText={translatedText}
-        alternatives={alternatives}
-        detectedLang={detectedLang}
-        textLoading={textLoading}
-        loading={loading}
-        status={status}
-        statusType={statusType}
-        ttsPlaying={ttsPlaying}
-        settingsOpen={settingsOpen}
-        screenPermissionSupported={Boolean(screenPermission?.supported)}
-        onInputChange={handleInputChange}
-        onTranslateNow={() => void translateText()}
-        onSpeakInput={handleSpeakInput}
-        onResetScreenPermission={() => void handleResetScreenPermission()}
-        onOpenScreenPermissionSettings={() => void handleOpenScreenPermissionSettings()}
-      />
-
-      <SettingsPanel
-        panelRef={settingsPanelRef}
-        settings={settings}
-        open={settingsOpen}
-        screenPermission={screenPermission}
-        onUpdateSettings={updateSettings}
-        onUpdateLlmConfig={updateLlmConfig}
-        onRecordingChange={(recording) => {
-          hotkeyRecordingRef.current = recording;
-        }}
-        onResetScreenPermission={() => void handleResetScreenPermission()}
-        onOpenScreenPermissionSettings={() => void handleOpenScreenPermissionSettings()}
-      />
+      {settingsOpen ? (
+        <SettingsPanel
+          panelRef={settingsPanelRef}
+          settings={settings}
+          open={settingsOpen}
+          screenPermission={screenPermission}
+          onClose={() => setSettingsOpen(false)}
+          onUpdateSettings={updateSettings}
+          onUpdateLlmConfig={updateLlmConfig}
+          onRecordingChange={(recording) => {
+            hotkeyRecordingRef.current = recording;
+          }}
+          onResetScreenPermission={() => void handleResetScreenPermission()}
+          onOpenScreenPermissionSettings={() => void handleOpenScreenPermissionSettings()}
+        />
+      ) : (
+        <TranslationWorkspace
+          inputRef={inputRef}
+          inputText={inputText}
+          translatedText={translatedText}
+          alternatives={alternatives}
+          detectedLang={detectedLang}
+          textLoading={textLoading}
+          loading={loading}
+          status={status}
+          statusType={statusType}
+          ttsPlaying={ttsPlaying}
+          screenPermissionSupported={Boolean(screenPermission?.supported)}
+          onInputChange={handleInputChange}
+          onTranslateNow={() => void translateText()}
+          onSpeakInput={handleSpeakInput}
+          onResetScreenPermission={() => void handleResetScreenPermission()}
+          onOpenScreenPermissionSettings={() => void handleOpenScreenPermissionSettings()}
+        />
+      )}
     </div>
   );
 }

@@ -431,6 +431,8 @@ pub struct CaptureTranslatePayload {
     pub image_width: u32,
     #[serde(default)]
     pub image_height: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recognized_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

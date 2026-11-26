@@ -70,7 +70,7 @@ export function HeaderBar({
         <button
           id="capture-btn"
           type="button"
-          title="截图翻译"
+          title="选区翻译"
           disabled={loading}
           onClick={(e) => {
             e.stopPropagation();
@@ -79,7 +79,7 @@ export function HeaderBar({
           className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-[#6B7280] transition hover:bg-black/5 hover:text-[#111827] disabled:cursor-default disabled:opacity-40"
         >
           <Scan className="h-4 w-4" aria-hidden="true" />
-          <span>截图翻译</span>
+          <span>选区翻译</span>
         </button>
 
         <button

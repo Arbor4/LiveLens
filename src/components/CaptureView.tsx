@@ -1,4 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  Languages,
+  Layers,
+  Monitor,
+  Scan,
+  ScanText,
+  X,
+} from "lucide-react";
 import { invokeCommand, waitForTauriRuntime } from "../lib/tauri";
 import type {
   CaptureRect,
@@ -103,6 +115,8 @@ export function CaptureView() {
   const [loading, setLoading] = useState(false);
   const [resultImageBase64, setResultImageBase64] = useState("");
   const [resultRegions, setResultRegions] = useState<OverlayRegion[]>([]);
+  const [ocrText, setOcrText] = useState<string | null>(null);
+  const [ocrCopied, setOcrCopied] = useState(false);
   const [resultSourceSize, setResultSourceSize] = useState<{ w: number; h: number }>({
     w: 0,
     h: 0,
@@ -231,6 +245,8 @@ export function CaptureView() {
       setLoading(true);
       setResultImageBase64("");
       setResultRegions([]);
+      setOcrText(null);
+      setOcrCopied(false);
       setError("");
       setNotice("");
 
@@ -240,6 +256,8 @@ export function CaptureView() {
           mode: action,
         });
         if (action === "copy_text") {
+          setOcrText(result.recognizedText ?? "");
+          setOcrCopied(false);
           return;
         }
         selectionImageRef.current = result.selection;
@@ -282,7 +300,7 @@ export function CaptureView() {
         const msg = err instanceof Error ? err.message : String(err);
         setError(
           msg.includes("Command") || msg.includes("not found")
-            ? "实时翻译模式将在下一阶段接入，当前请先使用「截图翻译」或「识别文字」"
+            ? "实时翻译模式将在下一阶段接入，当前请先使用「选区翻译」或「识别文字」"
             : msg,
         );
       }
@@ -304,11 +322,26 @@ export function CaptureView() {
     }
   }, [resultRegions]);
 
+  const handleCopyOcrText = useCallback(async () => {
+    const text = (ocrText ?? "").trim();
+    if (!text) return;
+    try {
+      await invokeCommand("copy_capture_text", { text });
+      setOcrCopied(true);
+      setNotice("已复制识别文字");
+      setTimeout(() => setOcrCopied(false), 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [ocrText]);
+
   const resetToHover = useCallback(() => {
     selectionImageRef.current = null;
     setSelectionCss(null);
     setResultImageBase64("");
     setResultRegions([]);
+    setOcrText(null);
+    setOcrCopied(false);
     setError("");
     setNotice("");
   }, []);
@@ -473,6 +506,9 @@ export function CaptureView() {
       ref={rootRef}
       id="capture-root"
       onContextMenu={(e) => {
+        if ((e.target as HTMLElement | null)?.closest("[data-capture-modal]")) {
+          return;
+        }
         e.preventDefault();
         if (hasResult && pointerWithinRect(e.clientX, e.clientY, selectionCss)) {
           setShowResult((prev) => !prev);
@@ -486,8 +522,8 @@ export function CaptureView() {
       }}
       onMouseDown={(e) => {
         if (e.button !== 0 || loading || !payload) return;
-        // Ignore clicks on the floating toolbar itself.
-        if ((e.target as HTMLElement | null)?.closest("[data-capture-toolbar]")) {
+        // Ignore clicks on the floating toolbar or OCR result modal.
+        if ((e.target as HTMLElement | null)?.closest("[data-capture-toolbar], [data-capture-modal]")) {
           return;
         }
 
@@ -785,7 +821,7 @@ export function CaptureView() {
       )}
 
       {/* Floating action toolbar after locking a selection */}
-      {selectionCss && !loading && toolbarStyle && (
+      {selectionCss && !loading && ocrText === null && toolbarStyle && (
         <div
           id="capture-toolbar"
           data-capture-toolbar
@@ -799,39 +835,44 @@ export function CaptureView() {
               <button
                 type="button"
                 onClick={() => void runSelectionAction("translate")}
-                className="cursor-pointer rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
               >
-                截图翻译
+                <Languages className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>选区翻译</span>
               </button>
               <button
                 type="button"
                 onClick={() => void runSelectionAction("copy_text")}
-                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
               >
-                识别文字
+                <ScanText className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>识别文字</span>
               </button>
               <span className="mx-0.5 h-3.5 w-px bg-white/15" />
               <button
                 type="button"
                 onClick={() => void runLiveAction("in_place")}
-                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
               >
-                原位实时
+                <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>原位实时</span>
               </button>
               <button
                 type="button"
                 onClick={() => void runLiveAction("mirror")}
-                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
               >
-                副屏实时
+                <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>副屏实时</span>
               </button>
               <span className="mx-0.5 h-3.5 w-px bg-white/15" />
               <button
                 type="button"
                 onClick={() => void cancelCapture()}
-                className="cursor-pointer rounded-lg px-2 py-1 text-gray-400 transition hover:bg-white/10 hover:text-white"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-gray-400 transition hover:bg-white/10 hover:text-white"
               >
-                取消
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>取消</span>
               </button>
             </>
           ) : (
@@ -839,35 +880,128 @@ export function CaptureView() {
               <button
                 type="button"
                 onClick={() => setShowResult((prev) => !prev)}
-                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
               >
-                {showResult ? "看原文" : "看译文"}
+                {showResult ? (
+                  <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                <span>{showResult ? "看原文" : "看译文"}</span>
               </button>
               {resultRegions.length > 0 && (
                 <button
                   type="button"
                   onClick={() => void handleCopyTranslated()}
-                  className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
                 >
-                  复制译文
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>复制译文</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={resetToHover}
-                className="cursor-pointer rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-gray-100 transition hover:bg-white/10"
               >
-                重选区域
+                <Scan className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>重选区域</span>
               </button>
               <button
                 type="button"
                 onClick={() => void cancelCapture()}
-                className="cursor-pointer rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#FFCC00] px-2.5 py-1 font-semibold text-[#111827] transition hover:bg-[#FFD633]"
               >
-                完成
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>完成</span>
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* OCR recognized text popup modal */}
+      {ocrText !== null && (
+        <div
+          data-capture-modal
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px] select-text cursor-default"
+        >
+          <div className="flex w-full max-w-[460px] flex-col overflow-hidden rounded-2xl border border-white/15 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#111827]">
+                <ScanText className="h-4 w-4 text-amber-500" aria-hidden="true" />
+                <span>识别文字</span>
+                {ocrText.trim() && (
+                  <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-normal text-[#6B7280]">
+                    {ocrText.trim().length} 字
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                title="关闭"
+                onClick={() => void cancelCapture()}
+                className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1 text-[#6B7280] transition hover:bg-zinc-100 hover:text-[#111827]"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <textarea
+                autoFocus
+                rows={7}
+                value={ocrText}
+                onChange={(e) => {
+                  setOcrText(e.target.value);
+                  setOcrCopied(false);
+                }}
+                placeholder="未识别到文字，可点击下方重选区域后重试"
+                className="w-full resize-y rounded-xl border border-zinc-200 bg-[#F9FAFB] p-3 text-[13px] leading-relaxed text-[#111827] outline-none transition focus:border-[#FFCC00] focus:bg-white"
+              />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-zinc-100 bg-zinc-50/70 px-4 py-2.5">
+              <button
+                type="button"
+                onClick={resetToHover}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#6B7280] transition hover:bg-zinc-200/70 hover:text-[#111827]"
+              >
+                <Scan className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>重选区域</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!ocrText.trim()}
+                  onClick={() => void handleCopyOcrText()}
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    ocrCopied
+                      ? "bg-emerald-500 text-white"
+                      : "bg-[#FFCC00] text-[#111827] hover:bg-[#FFD633]"
+                  }`}
+                >
+                  {ocrCopied ? (
+                    <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  <span>{ocrCopied ? "已复制" : "复制文字"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void cancelCapture()}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-[#111827] transition hover:bg-zinc-100"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>关闭</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

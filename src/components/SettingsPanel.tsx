@@ -1,4 +1,5 @@
 import { useState, type RefObject } from "react";
+import { ArrowLeft, ExternalLink, PlugZap, RefreshCw, RotateCcw } from "lucide-react";
 import {
   DEFAULT_LLM_AUTO_PROMPT,
   DEFAULT_LLM_PROMPT,
@@ -25,6 +26,7 @@ interface SettingsPanelProps {
   settings: TranslatorSettings;
   open: boolean;
   screenPermission?: ScreenCapturePermissionStatus | null;
+  onClose?: () => void;
   onUpdateSettings: (updater: (prev: TranslatorSettings) => TranslatorSettings) => void;
   onUpdateLlmConfig: (patch: Partial<LlmConfig>) => void;
   onRecordingChange: (recording: boolean) => void;
@@ -37,6 +39,7 @@ export function SettingsPanel({
   settings,
   open,
   screenPermission,
+  onClose,
   onUpdateSettings,
   onUpdateLlmConfig,
   onRecordingChange,
@@ -86,8 +89,23 @@ export function SettingsPanel({
     <section
       ref={panelRef}
       id="settings-panel"
-      className="settings-panel no-scrollbar min-h-0 flex-1 overflow-y-auto rounded-[20px] bg-white px-4 py-3.5 shadow-[0_2px_8px_rgba(0,0,0,0.02)]"
+      className="settings-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.02)]"
     >
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-2.5">
+        <span className="text-[13px] font-semibold text-[#111827]">偏好设置</span>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#6B7280] transition hover:bg-black/5 hover:text-[#111827]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>返回翻译</span>
+          </button>
+        )}
+      </div>
+
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-3">
       <div className="settings-section flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
@@ -208,9 +226,14 @@ export function SettingsPanel({
                     type="button"
                     disabled={ocrTesting}
                     onClick={() => void handleTestRapidOcr()}
-                    className="shrink-0 cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
+                    className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
                   >
-                    {ocrTesting ? "测试中…" : "测试"}
+                    {ocrTesting ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    <span>{ocrTesting ? "测试中…" : "测试"}</span>
                   </button>
                 </div>
                 {ocrTestMsg && (
@@ -302,7 +325,7 @@ export function SettingsPanel({
 
         <div className="flex items-center justify-between">
           <span className="shrink-0 whitespace-nowrap text-[13px] font-medium text-[#111827]">
-            截图翻译
+            选区翻译
           </span>
           <ShortcutRecorder
             id="shortcut-row"
@@ -368,18 +391,20 @@ export function SettingsPanel({
                 <button
                   type="button"
                   onClick={onResetScreenPermission}
-                  className="cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200"
                 >
-                  重置权限
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>重置权限</span>
                 </button>
               )}
               {onOpenScreenPermissionSettings && (
                 <button
                   type="button"
                   onClick={onOpenScreenPermissionSettings}
-                  className="cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#6B7280] transition hover:bg-zinc-200 hover:text-[#111827]"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#6B7280] transition hover:bg-zinc-200 hover:text-[#111827]"
                 >
-                  系统设置
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>系统设置</span>
                 </button>
               )}
             </div>
@@ -468,9 +493,14 @@ export function SettingsPanel({
               type="button"
               disabled={llmTesting}
               onClick={() => void handleTestLlm()}
-              className="shrink-0 cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-200 disabled:opacity-50"
             >
-              {llmTesting ? "测试中…" : "测试连接"}
+              {llmTesting ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span>{llmTesting ? "测试中…" : "测试连接"}</span>
             </button>
           </div>
           {llmTestMsg && (
@@ -518,6 +548,7 @@ export function SettingsPanel({
           </div>
         </div>
       )}
+      </div>
     </section>
   );
 }

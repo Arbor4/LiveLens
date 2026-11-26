@@ -1,6 +1,7 @@
-import type { ClipboardEvent, KeyboardEvent, RefObject } from "react";
-import { Volume2 } from "lucide-react";
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from "react";
+import { Check, Copy, ExternalLink, RotateCcw, Volume2 } from "lucide-react";
 import { LANGUAGES } from "../constants/translator";
+import { invokeCommand } from "../lib/tauri";
 
 interface TranslationWorkspaceProps {
   inputRef: RefObject<HTMLTextAreaElement | null>;
@@ -13,7 +14,6 @@ interface TranslationWorkspaceProps {
   status: string;
   statusType: string;
   ttsPlaying: boolean;
-  settingsOpen: boolean;
   screenPermissionSupported?: boolean;
   onInputChange: (value: string) => void;
   onTranslateNow: () => void;
@@ -33,7 +33,6 @@ export function TranslationWorkspace({
   status,
   statusType,
   ttsPlaying,
-  settingsOpen,
   screenPermissionSupported,
   onInputChange,
   onTranslateNow,
@@ -41,6 +40,36 @@ export function TranslationWorkspace({
   onResetScreenPermission,
   onOpenScreenPermissionSettings,
 }: TranslationWorkspaceProps) {
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [translatedText]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
+
+  const handleCopyTranslated = async () => {
+    const text = translatedText.trim();
+    if (!text) return;
+    try {
+      await invokeCommand("copy_capture_text", { text });
+    } catch {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        return;
+      }
+    }
+    setCopied(true);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+  };
+
   const detectedLabel = detectedLang
     ? LANGUAGES.find((lang) => lang.value === detectedLang)?.label || detectedLang
     : "";
@@ -73,29 +102,27 @@ export function TranslationWorkspace({
           <button
             type="button"
             onClick={onResetScreenPermission}
-            className="cursor-pointer rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-600"
           >
-            重置录屏权限
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>重置录屏权限</span>
           </button>
         )}
         {onOpenScreenPermissionSettings && (
           <button
             type="button"
             onClick={onOpenScreenPermissionSettings}
-            className="cursor-pointer rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-100"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-[#111827] transition hover:bg-zinc-100"
           >
-            打开系统设置
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>打开系统设置</span>
           </button>
         )}
       </div>
     ) : null;
 
   return (
-    <section
-      className={`text-block flex flex-row overflow-hidden rounded-[20px] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
-        settingsOpen ? "h-[200px] shrink-0 grow-0" : "min-h-0 flex-1"
-      }`}
-    >
+    <section className="text-block flex min-h-0 flex-1 flex-row overflow-hidden rounded-[20px] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
       <div className="flex min-w-0 flex-1 flex-col border-r border-[#F0F0F2] pr-2.5">
         <div className="relative flex flex-1 flex-col min-h-0">
           <textarea
@@ -202,6 +229,29 @@ export function TranslationWorkspace({
               画面一变，翻译即现。
             </div>
           ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-1 pt-1 text-xs text-[#6B7280]">
+          {translatedText && !textLoading && (
+            <button
+              id="copy-translation-btn"
+              type="button"
+              title={copied ? "已复制" : "复制译文"}
+              onClick={() => void handleCopyTranslated()}
+              className={`inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-xs transition ${
+                copied
+                  ? "text-emerald-600"
+                  : "text-[#6B7280] hover:bg-black/5 hover:text-[#111827]"
+              }`}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span>{copied ? "已复制" : "复制"}</span>
+            </button>
+          )}
         </div>
       </div>
     </section>

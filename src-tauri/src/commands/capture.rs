@@ -405,18 +405,14 @@ pub async fn submit_capture_selection(
 
         match result {
             Ok(ocr_result) => {
-                if let Err(e) = copy_to_clipboard(&ocr_result.text) {
-                    tracing::warn!("clipboard copy failed: {e}");
-                }
-                let _ = close_capture_window(&app);
-                reset_capture_state(state.inner()).await;
-                emit_workflow_state(&app, "已复制识别文字", "ok", false).ok();
+                emit_workflow_state(&app, "识别完成", "ok", false).ok();
                 Ok(CaptureTranslatePayload {
                     image_base64: String::new(),
                     selection,
                     regions: Vec::new(),
                     image_width: selection.width,
                     image_height: selection.height,
+                    recognized_text: Some(ocr_result.text),
                 })
             }
             Err(err) => {
@@ -474,6 +470,7 @@ pub async fn submit_capture_selection(
                 regions,
                 image_width: selection.width,
                 image_height: selection.height,
+                recognized_text: None,
             })
         }
         .await;
