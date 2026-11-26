@@ -184,8 +184,11 @@ void *livelens_sc_start(
 
             SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
             config.sourceRect = CGRectMake(src_x, src_y, src_w, src_h);
-            config.width = out_w > 0 ? out_w : 1;
-            config.height = out_h > 0 ? out_h : 1;
+            uint32_t evenW = out_w >= 2 ? (out_w & ~1u) : 2;
+            uint32_t evenH = out_h >= 2 ? (out_h & ~1u) : 2;
+            config.width = evenW;
+            config.height = evenH;
+            config.scalesToFit = YES;
             uint32_t safeFps = fps > 0 ? fps : 15;
             config.minimumFrameInterval = CMTimeMake(1, (int32_t)safeFps);
             config.pixelFormat = kCVPixelFormatType_32BGRA;

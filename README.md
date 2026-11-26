@@ -1,115 +1,154 @@
-# 幕译 · LiveLens
+<p align="center">
+  <img src="src-tauri/icons/icon.svg" width="88" height="88" alt="LiveLens Logo" />
+</p>
 
-**画面一变，翻译即现。**
+<h1 align="center">LiveLens (幕译)</h1>
 
-幕译（LiveLens）是一款轻量级桌面屏幕实时截图翻译与多引擎文本翻译工具。  
-“幕”指屏幕与画面，“Live”强调实时响应，“Lens”寓意镜头所及、看见即译。
+<p align="center">
+  <strong>Screen changes, translation appears instantly.</strong><br/>
+  A lightweight, native desktop screen translator with smart region selection, real-time live overlay & mirror translation, local OCR, and multi-engine / local LLM translation.
+</p>
 
-基于 Tauri 2 + React + Tailwind CSS 构建，兼具快速启动、原生性能与简洁交互。
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-## 演示
+---
 
-![demo](assets/demo.png)
+## Preview
 
-## 核心特性
+![LiveLens Demo](assets/demo.png)
 
-- **仿微信智能选区与悬浮工具栏**：悬停自动框选软件窗口与顶部菜单栏，支持 8 向拖拽微调，选定后通过工具栏按需执行「截图翻译 / 识别文字 / 原位实时 / 副屏实时」
-- **双模式实时屏幕翻译**：
-  - **原位实时模式**：透明置顶且鼠标穿透，在原区域上方实时覆盖译文（支持区块原位覆盖与吸底字幕条切换）
-  - **实时翻译副屏模式**：独立可缩放/全屏窗口，通过 macOS `ScreenCaptureKit` 同步选区画面并等比叠加实时译文（支持智能关键帧省电模式与流畅视频模式）
-- **可配置 OCR 与本地大模型**：支持 macOS 原生 **Apple Vision**、外置独立 **RapidOCR** 服务，以及保留随时切回原版 **有道图片翻译**；翻译支持 **HY-MT1.5-1.8B**（Ollama / llama.cpp / MLX）及 必应、Google、微软、腾讯、Yandex、词霸
-- **原文 / 译文切换**：静态翻译展示后，在选区内右键或点击工具栏即可快速对比原文与译文
-- **网络代理配置**：支持系统代理、自定义代理地址或直连模式
-- **语音朗读与语言检测**：支持输入文本自动语种检测与语音播报
-- **系统托盘常驻**：关闭主窗口后自动隐藏至系统托盘，支持快捷键唤醒与开机静默自启
+## Why LiveLens?
 
-> 本地模型与独立 RapidOCR 服务安装指南见 [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md)，分阶段演进文档见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+LiveLens is built with **Tauri 2 + React 19 + Rust** for instant startup, low memory footprint, and native macOS / Windows / Linux performance. Whether you are reading foreign-language docs, watching videos or live streams, playing games, or inspecting UI text, LiveLens lets you translate any part of your screen on demand—or continuously in real time.
 
-## 快捷键与交互
+## Key Features
 
-| 操作 | 说明 |
-|------|------|
-| `Ctrl+Shift+X` | 全局快捷键，启动截图翻译（可在设置中修改） |
-| `Ctrl+Shift+C` | 全局快捷键，截图识别文字并复制（可在设置中修改） |
-| **鼠标左键拖拽** | 框选需要翻译或识别的屏幕区域 |
-| **区域内鼠标右键** | 在译文与原文画面之间快速切换 |
-| `Esc` / **区域外右键** | 取消截图或关闭结果预览 |
-| **点击托盘图标** | 唤醒主窗口 |
-| **右键托盘图标** | 打开托盘菜单（显示窗口 / 退出） |
+### 1. Smart Region Selection & Floating Toolbar
+- **Auto-detects windows & menu bars** on hover, or drag freely to select any region.
+- **8-direction resize handles & drag-to-move** for pixel-accurate framing before running an action.
+- Unified floating action bar right below the selection:
+  - **Region Translate (`选区翻译`)**: Static OCR + in-place visual translation overlay with one-click Original / Translated comparison and copy.
+  - **OCR Text (`识别文字`)**: Extracts text into an editable popup dialog with character count and one-click copy.
+  - **In-Place Live (`原位实时`)**: Click-through transparent overlay directly above the selected screen region.
+  - **Mirror Live (`副屏实时`)**: Independent resizable window syncing live screen frames via macOS `ScreenCaptureKit` with synchronized translated overlays.
 
-## 技术栈
+### 2. Dual-Mode Real-Time Screen Translation
+- **In-Place Live Overlay**: Always-on-top, transparent, and mouse click-through so you can keep scrolling, clicking, or playing underneath. Supports switching between **in-place text blocks** and a **bottom subtitle bar**, plus **bilingual** display.
+- **Live Mirror Window**: Mirrors the selected region into a standalone resizable window with real-time translated overlays. Supports **Smart Keyframe** mode (low CPU/battery for reading & scrolling) and **Smooth Stream** mode (continuous video), plus pause/resume, hide/show overlay, and one-click copy.
 
-- **前端**：React 19 + TypeScript + Tailwind CSS v4 + Vite
-- **桌面框架**：Tauri 2（Rust 后端 + 多窗口 WebView）
-- **截图与选区**：
-  - macOS：CoreGraphics / 原生全屏预览与 WebView 交互层
-  - Windows / Linux：`screenshots` + `winit` + `softbuffer` 原生选区渲染
+### 3. Flexible OCR & Translation Engines
+- **OCR Engines**:
+  - **Apple Vision** (macOS native, offline, fast & accurate)
+  - **RapidOCR** (standalone local HTTP OCR service, cross-platform)
+  - **Youdao Image Translate** (one-click switchable cloud image translation pipeline)
+- **Translation Engines**:
+  - **Local / OpenAI-compatible LLMs**: Built-in presets for **HY-MT1.5-1.8B** (`Ollama`, `llama.cpp`, `MLX`) and any OpenAI-compatible API endpoint with customizable system prompts.
+  - **Built-in Web Engines**: Bing, Google, Microsoft, Tencent TransMart, Yandex, and iCiba.
 
-## 项目结构
+### 4. Clean Desktop Experience
+- **Quick Text Translation Workspace**: Type or paste text with automatic language detection, text-to-speech playback, and one-click copy.
+- **In-Place Preferences**: Compact settings view inside the main window without awkward vertical resizing.
+- **System Tray Resident**: Closing the main window minimizes to the tray (monochrome template icon on macOS) with global shortcuts and optional launch-at-login.
+- **Flexible Networking**: Supports system proxy, custom HTTP/SOCKS proxy, or direct connection.
 
-采用 Tauri 2 官方标准的 Vite + React + Rust 分层结构：
+> For local LLM & standalone RapidOCR setup instructions, see [docs/LOCAL_MODELS.md](docs/LOCAL_MODELS.md).  
+> For architecture and phased milestones, see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Shortcuts & Interactions
+
+| Action | Description |
+|--------|-------------|
+| `Ctrl+Shift+X` | Global shortcut to start **Region Translate** (customizable in Settings) |
+| `Ctrl+Shift+C` | Global shortcut to start **OCR Text** recognition (customizable in Settings) |
+| **Hover + Click** | Snap selection to an application window |
+| **Left-Drag** | Draw a custom capture region |
+| **Right-Click inside result** | Toggle between translated overlay and original screen |
+| `Esc` / **Right-Click outside** | Cancel capture or close preview |
+| **Click Tray Icon** | Show main window |
+| **Right-Click Tray Icon** | Open tray menu (Show Window / Quit) |
+
+## Installation & macOS Notes
+
+Download the latest prebuilt package for your platform from [GitHub Releases](https://github.com/Arbor4/LiveLens/releases).
+
+### macOS First Launch (Unsigned Build)
+If macOS Gatekeeper blocks a self-built or unsigned `.app` bundle on first launch, remove the quarantine attribute:
+
+```bash
+sudo xattr -cr /Applications/LiveLens.app
+```
+
+### macOS Screen Recording Permission
+1. On first capture, grant **Screen & System Audio Recording** permission to **LiveLens** in **System Settings → Privacy & Security → Screen & System Audio Recording**.
+2. If you upgraded or replaced the app and macOS still reports missing permission even though the switch is enabled, open **Settings → Screen Recording Permission** inside LiveLens and click **Reset Permission (`重置权限`)**—LiveLens will automatically clear the stale TCC record, relaunch, and open System Settings for you.
+
+## Tech Stack
+
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Vite
+- **Desktop Runtime**: Tauri 2 (Rust backend + multi-window WebView)
+- **Screen Capture & Live Streaming**:
+  - **macOS**: CoreGraphics, `ScreenCaptureKit` (live frame streaming), Apple Vision (native OCR)
+  - **Windows / Linux**: `screenshots` + `winit` + `softbuffer` native selection overlay
+
+## Project Structure
 
 ```text
 .
-├── index.html                  # 主窗口入口
-├── capture.html                # 截图选区窗口入口
-├── overlay.html                # 独立浮层窗口入口
-├── package.json                # 前端依赖与脚本
-├── vite.config.ts              # Vite 多入口与 Tailwind CSS 配置
-├── src/                        # React 前端源码
-│   ├── main.tsx                # 主窗口挂载入口
-│   ├── capture.tsx             # 截图窗口挂载入口
-│   ├── overlay.tsx             # 浮层窗口挂载入口
-│   ├── App.tsx                 # 主窗口根组件
-│   ├── components/             # UI 组件（HeaderBar、TranslationWorkspace、SettingsPanel 等）
-│   ├── constants/              # 语言列表、引擎与代理配置常量
-│   ├── lib/                    # Tauri IPC 封装、快捷键与焦点工具
-│   ├── styles/                 # Tailwind CSS 全局样式
-│   └── types/                  # TypeScript 数据类型定义
-└── src-tauri/                  # Tauri 2 Rust 后端
-    ├── Cargo.toml
-    ├── tauri.conf.json
-    └── src/
-        ├── main.rs             # 二进制入口（调用 livelens_lib::run）
-        ├── lib.rs              # 应用构建、插件初始化与托盘生命周期
-        ├── state.rs            # 全局共享状态
-        ├── config.rs           # 配置与历史记录持久化
-        ├── models.rs           # 前后端通信数据结构
-        ├── error.rs            # 统一错误类型
-        ├── commands/           # Tauri Commands（capture / settings / translate / window / overlay / history）
-        ├── capture/            # 屏幕采集与原生选区窗口
-        └── translators/        # OCR 图译与多引擎文本翻译实现
+├── index.html                  # Main window entry
+├── capture.html                # Region selection window entry
+├── overlay.html                # Click-through in-place live overlay entry
+├── live-controls.html          # Floating live control bar entry
+├── mirror.html                 # Live mirror window entry
+├── src/                        # React + TypeScript frontend
+│   ├── App.tsx                 # Main window root
+│   ├── components/             # HeaderBar, TranslationWorkspace, SettingsPanel, CaptureView, MirrorView, OverlayView, LiveControlsView
+│   ├── constants/              # Languages, engines, LLM presets, proxy configs
+│   ├── lib/                    # Tauri IPC wrappers, shortcut & focus utilities
+│   ├── styles/                 # Tailwind CSS global styles
+│   └── types/                  # TypeScript types
+├── src-tauri/                  # Tauri 2 Rust backend
+│   ├── tauri.conf.json         # Tauri app & bundle configuration
+│   ├── native/                 # macOS Objective-C bridges (Apple Vision OCR & ScreenCaptureKit)
+│   └── src/
+│       ├── lib.rs              # App bootstrap, tray icon & plugin setup
+│       ├── live.rs             # Live capture loop, change detection & local frame server
+│       ├── capture/            # Screen capture & native selection window
+│       ├── commands/           # Tauri IPC commands (capture, live, overlay, settings, translate, window)
+│       └── translators/        # OCR pipelines & multi-engine / LLM translators
+└── docs/                       # Local model guide & roadmap
 ```
 
-## 本地开发与构建
+## Local Development & Build
 
-### 环境要求
+### Prerequisites
+- **Node.js** 20+ and `npm`
+- **Rust** stable toolchain
+- **Tauri CLI v2**: `cargo install tauri-cli --version "^2"`
 
-- Node.js 20+ 与 npm
-- Rust 工具链（stable）
-- Tauri CLI v2（`cargo install tauri-cli --version "^2"`）
-
-### 安装依赖与运行
+### Run in Development
 
 ```bash
 npm install
 cargo tauri dev
 ```
 
-### 生产打包
+### Build for Production
 
 ```bash
 cargo tauri build
 ```
 
-打包产物位于 `src-tauri/target/release/bundle/` 目录下。
+Release bundles are generated in `src-tauri/target/release/bundle/`.
 
-## macOS 运行说明
-
-如果本地自行打包或分发的应用未使用 Apple 开发者证书签名，首次在 macOS 上打开时系统可能会拦截：
+### Run Tests
 
 ```bash
-sudo xattr -cr /Applications/LiveLens.app
+npm test
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-也可以在访达（Finder）中右键点击 `LiveLens.app` 选择“打开”，或在 **系统设置 > 隐私与安全性** 中允许运行并授予屏幕录制权限。
+## License
+
+MIT

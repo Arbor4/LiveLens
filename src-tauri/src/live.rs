@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use image::codecs::jpeg::JpegEncoder;
@@ -248,13 +250,13 @@ pub fn encode_rgba_to_jpeg(rgba: &[u8], w: u32, h: u32, quality: u8) -> AppResul
     Ok(out)
 }
 
-/// Fast luminance MAD across a 32x24 sample grid (returns 0.0..255.0).
+/// Fast luminance signature across a 48x36 sample grid.
 pub fn sample_frame_signature(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
     if w == 0 || h == 0 || rgba.len() < (w * h * 4) as usize {
         return Vec::new();
     }
-    const COLS: u32 = 32;
-    const ROWS: u32 = 24;
+    const COLS: u32 = 48;
+    const ROWS: u32 = 36;
     let mut sig = Vec::with_capacity((COLS * ROWS) as usize);
     for gy in 0..ROWS {
         let py = ((gy * h) / ROWS).min(h - 1);
@@ -281,6 +283,31 @@ pub fn signature_mad(a: &[u8], b: &[u8]) -> f32 {
     (sum as f32) / (a.len() as f32)
 }
 
+/// Detects both broad luminance shifts (MAD) and localized changes (e.g. scrolling text on a
+/// mostly white browser page where global MAD stays small).
+pub fn frames_differ(
+    a: &[u8],
+    b: &[u8],
+    mad_threshold: f32,
+    pixel_delta: u8,
+    min_changed_pixels: usize,
+) -> bool {
+    if a.is_empty() || a.len() != b.len() {
+        return true;
+    }
+    let mut sum: u32 = 0;
+    let mut changed: usize = 0;
+    for (&x, &y) in a.iter().zip(b.iter()) {
+        let d = (x as i32 - y as i32).unsigned_abs();
+        sum += d;
+        if d >= pixel_delta as u32 {
+            changed += 1;
+        }
+    }
+    let mad = (sum as f32) / (a.len() as f32);
+    mad > mad_threshold || changed >= min_changed_pixels
+}
+
 pub fn spawn_live_loop(
     app: AppHandle,
     state: SharedState,
@@ -295,7 +322,7 @@ pub fn spawn_live_loop(
         let fps = settings_snapshot.live_mirror_fps.clamp(5, 30);
 
         let max_dim = 1920u32;
-        let (out_w, out_h) = if initial_w > max_dim || initial_h > max_dim {
+        let (raw_w, raw_h) = if initial_w > max_dim || initial_h > max_dim {
             let scale = (max_dim as f64) / (initial_w.max(initial_h) as f64);
             (
                 ((initial_w as f64) * scale).round().max(2.0) as u32,
@@ -304,6 +331,8 @@ pub fn spawn_live_loop(
         } else {
             (initial_w.max(2), initial_h.max(2))
         };
+        let out_w = (raw_w & !1).max(2);
+        let out_h = (raw_h & !1).max(2);
 
         #[cfg(target_os = "macos")]
         let sc_stream = {
@@ -345,7 +374,8 @@ pub fn spawn_live_loop(
         let mut last_video_sig = sample_frame_signature(&initial_rgba, initial_w, initial_h);
         let mut last_ocr_sig: Vec<u8> = Vec::new();
         let mut last_ocr_at = Instant::now() - Duration::from_secs(10);
-        let mut last_text_signature = String::new();
+        let last_text_signature = Arc::new(tokio::sync::Mutex::new(String::new()));
+        let ocr_in_flight = Arc::new(AtomicBool::new(false));
         let mut latest_frame: Option<(Vec<u8>, u32, u32)> = Some((initial_rgba, initial_w, initial_h));
         let mut force_initial_ocr = true;
 
@@ -372,16 +402,19 @@ pub fn spawn_live_loop(
             let polled = if let Some(ref stream) = sc_stream {
                 let s = stream.clone();
                 let min_seq = last_sc_seq;
-                tokio::task::spawn_blocking(move || macos_sc::poll(&s, min_seq))
-                    .await
-                    .ok()
-                    .and_then(|res| match res {
-                        Ok(opt) => opt,
-                        Err(e) => {
-                            tracing::warn!("SCStream poll error: {e}");
-                            None
-                        }
-                    })
+                match tokio::task::spawn_blocking(move || macos_sc::poll(&s, min_seq)).await {
+                    Ok(Ok(opt)) => opt,
+                    Ok(Err(e)) => {
+                        tracing::warn!("SCStream poll error: {e}");
+                        state.live_runtime.write().await.last_error = e.clone();
+                        let _ = app.emit("live:error", serde_json::json!({ "message": e }));
+                        None
+                    }
+                    Err(e) => {
+                        tracing::warn!("SCStream poll join error: {e}");
+                        None
+                    }
+                }
             } else {
                 None
             };
@@ -392,10 +425,9 @@ pub fn spawn_live_loop(
             if let Some((seq, fw, fh, rgba)) = polled {
                 last_sc_seq = seq;
                 let sig = sample_frame_signature(&rgba, fw, fh);
-                let video_diff = signature_mad(&sig, &last_video_sig);
 
                 let should_push_video = runtime.mode == LiveDisplayMode::Mirror
-                    && (!runtime.keyframe_only || video_diff > 1.2);
+                    && (!runtime.keyframe_only || frames_differ(&sig, &last_video_sig, 0.35, 16, 4));
 
                 if should_push_video {
                     last_video_sig = sig.clone();
@@ -421,128 +453,175 @@ pub fn spawn_live_loop(
             let settings = state.settings.read().await.clone();
             let interval = Duration::from_millis(settings.live_frame_interval_ms.clamp(150, 5000));
 
-            if let Some((ref rgba, fw, fh)) = latest_frame {
-                let sig = sample_frame_signature(rgba, fw, fh);
-                let ocr_diff = signature_mad(&sig, &last_ocr_sig);
-                let due = last_ocr_at.elapsed() >= interval;
+            if !ocr_in_flight.load(Ordering::Acquire) {
+                if let Some((ref rgba, fw, fh)) = latest_frame {
+                    let sig = sample_frame_signature(rgba, fw, fh);
+                    let due = last_ocr_at.elapsed() >= interval;
+                    let ocr_changed = frames_differ(&sig, &last_ocr_sig, 0.6, 18, 6);
 
-                if force_initial_ocr || (due && ocr_diff > 2.4) {
-                    force_initial_ocr = false;
-                    last_ocr_at = Instant::now();
-                    last_ocr_sig = sig;
+                    if force_initial_ocr || (due && ocr_changed) {
+                        force_initial_ocr = false;
+                        last_ocr_at = Instant::now();
+                        last_ocr_sig = sig;
+                        ocr_in_flight.store(true, Ordering::Release);
 
-                    let rgba_copy = rgba.clone();
-                    let ocr_started = Instant::now();
-                    let png_res = tokio::task::spawn_blocking(move || {
-                        capture_window::encode_png(&rgba_copy, fw, fh)
-                    })
-                    .await;
+                        let rgba_copy = rgba.clone();
+                        let app_clone = app.clone();
+                        let state_clone = state.clone();
+                        let runtime_clone = runtime.clone();
+                        let settings_clone = settings.clone();
+                        let last_text_sig_clone = last_text_signature.clone();
+                        let in_flight_clone = ocr_in_flight.clone();
+                        let stop_rx_clone = stop_rx.clone();
 
-                    let png_bytes = match png_res {
-                        Ok(Ok(bytes)) => bytes,
-                        _ => {
-                            tokio::time::sleep(Duration::from_millis(tick_ms)).await;
-                            continue;
-                        }
-                    };
+                        tokio::spawn(async move {
+                            let result = async {
+                                if *stop_rx_clone.borrow() {
+                                    return;
+                                }
 
-                    let effective_ocr_engine = if settings.image_translate_mode == ImageTranslateMode::Youdao
-                    {
-                        #[cfg(target_os = "macos")]
-                        {
-                            OcrEngine::AppleVision
-                        }
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            OcrEngine::RapidOcr
-                        }
-                    } else {
-                        settings.ocr_engine
-                    };
+                                let ocr_started = Instant::now();
+                                let rgba_for_png = rgba_copy.clone();
+                                let png_res = tokio::task::spawn_blocking(move || {
+                                    capture_window::encode_png(&rgba_for_png, fw, fh)
+                                })
+                                .await;
 
-                    match ocr::recognize_image_bytes(
-                        &state.http_client,
-                        effective_ocr_engine,
-                        &settings.rapid_ocr_url,
-                        png_bytes,
-                        &settings.from_lang,
-                    )
-                    .await
-                    {
-                        Ok(lines) => {
-                            let ocr_ms = ocr_started.elapsed().as_millis() as u64;
-                            let paragraphs = ocr::group_ocr_lines_into_paragraphs(lines);
-                            let text_sig = paragraphs
-                                .iter()
-                                .map(|p| format!("{}:{}:{}", p.text, p.rect.x / 8, p.rect.y / 8))
-                                .collect::<Vec<_>>()
-                                .join("|");
-
-                            if text_sig != last_text_signature {
-                                last_text_signature = text_sig;
-                                let translate_started = Instant::now();
-                                let sel = SelectionPayload {
-                                    x: 0.0,
-                                    y: 0.0,
-                                    width: fw as f64,
-                                    height: fh as f64,
-                                    monitor_id: "live".into(),
-                                    monitor_x: runtime.monitor_x,
-                                    monitor_y: runtime.monitor_y,
-                                    monitor_width: runtime.monitor_width,
-                                    monitor_height: runtime.monitor_height,
-                                    monitor_scale_factor: runtime.scale_factor,
+                                let png_bytes = match png_res {
+                                    Ok(Ok(bytes)) => bytes,
+                                    _ => return,
                                 };
 
-                                match ocr::translate_paragraphs_to_regions(
-                                    paragraphs,
-                                    rgba,
-                                    fw,
-                                    fh,
-                                    &sel,
-                                    &settings,
-                                    &state.text_translator,
-                                    &state.translation_cache,
+                                let effective_ocr_engine = if settings_clone.image_translate_mode
+                                    == ImageTranslateMode::Youdao
+                                {
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        OcrEngine::AppleVision
+                                    }
+                                    #[cfg(not(target_os = "macos"))]
+                                    {
+                                        OcrEngine::RapidOcr
+                                    }
+                                } else {
+                                    settings_clone.ocr_engine
+                                };
+
+                                match ocr::recognize_image_bytes(
+                                    &state_clone.http_client,
+                                    effective_ocr_engine,
+                                    &settings_clone.rapid_ocr_url,
+                                    png_bytes,
+                                    &settings_clone.from_lang,
                                 )
                                 .await
                                 {
-                                    Ok(regions) => {
-                                        let translate_ms =
-                                            translate_started.elapsed().as_millis() as u64;
-                                        let seq = state.live_frames.read().await.seq;
-                                        {
-                                            let mut rt = state.live_runtime.write().await;
-                                            rt.regions = regions.clone();
-                                            rt.source_width = fw;
-                                            rt.source_height = fh;
-                                            rt.last_error.clear();
+                                    Ok(lines) => {
+                                        if *stop_rx_clone.borrow() {
+                                            return;
                                         }
-                                        let _ = app.emit(
-                                            "live:regions",
-                                            LiveRegionsEvent {
-                                                frame_seq: seq,
-                                                regions,
-                                                ocr_ms,
-                                                translate_ms,
-                                            },
-                                        );
+                                        let ocr_ms = ocr_started.elapsed().as_millis() as u64;
+                                        let paragraphs = ocr::group_ocr_lines_into_paragraphs(lines);
+                                        let text_sig = paragraphs
+                                            .iter()
+                                            .map(|p| {
+                                                format!(
+                                                    "{}:{}:{}",
+                                                    p.text,
+                                                    p.rect.x / 8,
+                                                    p.rect.y / 8
+                                                )
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join("|");
+
+                                        let mut prev_sig = last_text_sig_clone.lock().await;
+                                        if text_sig != *prev_sig {
+                                            *prev_sig = text_sig;
+                                            drop(prev_sig);
+
+                                            let translate_started = Instant::now();
+                                            let sel = SelectionPayload {
+                                                x: 0.0,
+                                                y: 0.0,
+                                                width: fw as f64,
+                                                height: fh as f64,
+                                                monitor_id: "live".into(),
+                                                monitor_x: runtime_clone.monitor_x,
+                                                monitor_y: runtime_clone.monitor_y,
+                                                monitor_width: runtime_clone.monitor_width,
+                                                monitor_height: runtime_clone.monitor_height,
+                                                monitor_scale_factor: runtime_clone.scale_factor,
+                                            };
+
+                                            match ocr::translate_paragraphs_to_regions(
+                                                paragraphs,
+                                                &rgba_copy,
+                                                fw,
+                                                fh,
+                                                &sel,
+                                                &settings_clone,
+                                                &state_clone.text_translator,
+                                                &state_clone.translation_cache,
+                                            )
+                                            .await
+                                            {
+                                                Ok(regions) => {
+                                                    if *stop_rx_clone.borrow() {
+                                                        return;
+                                                    }
+                                                    let translate_ms =
+                                                        translate_started.elapsed().as_millis()
+                                                            as u64;
+                                                    let seq =
+                                                        state_clone.live_frames.read().await.seq;
+                                                    {
+                                                        let mut rt =
+                                                            state_clone.live_runtime.write().await;
+                                                        rt.regions = regions.clone();
+                                                        rt.source_width = fw;
+                                                        rt.source_height = fh;
+                                                        rt.last_error.clear();
+                                                    }
+                                                    let _ = app_clone.emit(
+                                                        "live:regions",
+                                                        LiveRegionsEvent {
+                                                            frame_seq: seq,
+                                                            regions,
+                                                            ocr_ms,
+                                                            translate_ms,
+                                                        },
+                                                    );
+                                                }
+                                                Err(err) => {
+                                                    let msg = err.to_string();
+                                                    state_clone
+                                                        .live_runtime
+                                                        .write()
+                                                        .await
+                                                        .last_error = msg.clone();
+                                                    let _ = app_clone.emit(
+                                                        "live:error",
+                                                        serde_json::json!({ "message": msg }),
+                                                    );
+                                                }
+                                            }
+                                        }
                                     }
                                     Err(err) => {
                                         let msg = err.to_string();
-                                        state.live_runtime.write().await.last_error = msg.clone();
-                                        let _ = app.emit(
+                                        state_clone.live_runtime.write().await.last_error =
+                                            msg.clone();
+                                        let _ = app_clone.emit(
                                             "live:error",
                                             serde_json::json!({ "message": msg }),
                                         );
                                     }
                                 }
-                            }
-                        }
-                        Err(err) => {
-                            let msg = err.to_string();
-                            state.live_runtime.write().await.last_error = msg.clone();
-                            let _ = app.emit("live:error", serde_json::json!({ "message": msg }));
-                        }
+                            };
+                            result.await;
+                            in_flight_clone.store(false, Ordering::Release);
+                        });
                     }
                 }
             }

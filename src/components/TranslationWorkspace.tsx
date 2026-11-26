@@ -124,7 +124,15 @@ export function TranslationWorkspace({
   return (
     <section className="text-block flex min-h-0 flex-1 flex-row overflow-hidden rounded-[20px] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
       <div className="flex min-w-0 flex-1 flex-col border-r border-[#F0F0F2] pr-2.5">
-        <div className="relative flex flex-1 flex-col min-h-0">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {!inputText && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-0 left-0 select-none pr-2 text-[15px] font-medium leading-relaxed text-zinc-300"
+            >
+              输入要翻译的文本...
+            </span>
+          )}
           <textarea
             ref={inputRef}
             id="text-input"
@@ -133,8 +141,8 @@ export function TranslationWorkspace({
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="输入要翻译的文本..."
-            className="min-h-0 w-full flex-1 resize-none overflow-y-auto border-none bg-transparent pr-2 text-[15px] font-medium leading-relaxed text-[#111827] outline-none placeholder:text-zinc-300"
+            aria-label="输入要翻译的文本"
+            className="min-h-0 w-full flex-1 resize-none overflow-y-auto border-none bg-transparent p-0 pr-2 text-[15px] font-medium leading-relaxed text-[#111827] outline-none"
           />
         </div>
 

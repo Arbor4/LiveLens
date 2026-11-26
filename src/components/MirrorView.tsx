@@ -88,14 +88,6 @@ export function MirrorView() {
     const boot = async () => {
       try {
         await waitForTauriRuntime();
-        const loaded = await invokeCommand<LiveSessionStatus>("load_live_status");
-        setStatus(loaded);
-        setRegions(loaded.regions || []);
-        setError(loaded.lastError || "");
-        frameUrlRef.current = loaded.frameUrl;
-        if (loaded.frameSeq > 0) {
-          void drawFrameSeq(loaded.frameSeq);
-        }
 
         unlistenFrame = await listenEvent<LiveFrameReadyEvent>("live:frame", (event) => {
           if (event.payload?.seq) {
@@ -122,6 +114,15 @@ export function MirrorView() {
             setError(event.payload.message);
           }
         });
+
+        const loaded = await invokeCommand<LiveSessionStatus>("load_live_status");
+        setStatus(loaded);
+        setRegions(loaded.regions || []);
+        setError(loaded.lastError || "");
+        frameUrlRef.current = loaded.frameUrl;
+        if (loaded.frameSeq > 0) {
+          void drawFrameSeq(loaded.frameSeq);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
