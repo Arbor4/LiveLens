@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Bottom-left L (Viewfinder Bracket) -->
+  <path d="M96 172 V352 Q96 416 160 416 H340" stroke="#000000" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Top-right Inverted L (Viewfinder Bracket) -->
+  <path d="M172 96 H352 Q416 96 416 160 V340" stroke="#000000" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Center Live Lens Core -->
+  <circle cx="256" cy="256" r="52" fill="#000000"/>
+</svg>

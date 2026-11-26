@@ -155,16 +155,16 @@ export function App() {
 
   const handleResetScreenPermission = useCallback(async () => {
     try {
+      setStatus("正在重置录屏权限并重启 LiveLens，重启后将自动打开系统设置…");
+      setStatusType("");
       const granted = await invokeCommand<boolean>("reset_screen_capture_permission");
       setScreenPermission((prev) =>
         prev ? { ...prev, granted } : { supported: true, granted },
       );
-      setStatus(
-        granted
-          ? "屏幕录制权限已恢复"
-          : "已清除旧录屏权限记录，请在系统弹窗中允许并在设置中勾选后重启 LiveLens",
-      );
-      setStatusType(granted ? "ok" : "");
+      if (granted) {
+        setStatus("屏幕录制权限已恢复");
+        setStatusType("ok");
+      }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
       setStatusType("error");

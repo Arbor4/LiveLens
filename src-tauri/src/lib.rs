@@ -155,16 +155,23 @@ pub fn run() {
                 Ok::<(), error::AppError>(())
             })?;
 
+            #[cfg(target_os = "macos")]
+            let icon = Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?;
+            #[cfg(not(target_os = "macos"))]
             let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))?;
 
             let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-            TrayIconBuilder::new()
+            let tray_builder = TrayIconBuilder::new()
                 .icon(icon)
                 .tooltip("LiveLens · 幕译")
-                .menu(&menu)
+                .menu(&menu);
+            #[cfg(target_os = "macos")]
+            let tray_builder = tray_builder.icon_as_template(true);
+
+            tray_builder
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => {
                         show_main_window(app);
@@ -185,10 +192,21 @@ pub fn run() {
 
             let main_window = app.get_webview_window("main").unwrap();
 
-            if startup::is_silent_launch(std::env::args_os()) {
+            let request_screen_permission =
+                startup::is_request_screen_permission_launch(std::env::args_os());
+
+            if !request_screen_permission && startup::is_silent_launch(std::env::args_os()) {
                 hide_main_window_to_background(app.handle());
             } else {
                 show_main_window(app.handle());
+            }
+
+            #[cfg(target_os = "macos")]
+            if request_screen_permission {
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_millis(350));
+                    let _ = capture::screen::open_screen_capture_settings();
+                });
             }
 
             let mw = main_window.clone();

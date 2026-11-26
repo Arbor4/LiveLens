@@ -387,12 +387,50 @@ pub fn reset_screen_capture_permission(bundle_id: &str) -> AppResult<()> {
         }));
     }
 
-    let _ = request_screen_capture_permission();
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn relaunch_for_screen_permission() -> AppResult<()> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    let exe = std::env::current_exe()
+        .map_err(|e| AppError::Capture(format!("获取应用路径失败: {e}")))?;
+
+    // If running from a .app bundle (e.g. /Applications/LiveLens.app/Contents/MacOS/livelens),
+    // relaunch via `open -n` through LaunchServices so macOS TCC registers the fresh process
+    // under the bundle identifier properly.
+    let app_bundle = exe
+        .ancestors()
+        .find(|p| p.extension().and_then(|e| e.to_str()) == Some("app"))
+        .map(Path::to_path_buf);
+
+    let arg = crate::startup::REQUEST_SCREEN_PERMISSION_ARG;
+    let shell_cmd = if let Some(bundle) = app_bundle {
+        let bundle_str = String::from_utf8_lossy(bundle.as_os_str().as_bytes()).replace('\'', "'\\''");
+        format!("sleep 0.5 && open -n '{bundle_str}' --args '{arg}'")
+    } else {
+        let exe_str = String::from_utf8_lossy(exe.as_os_str().as_bytes()).replace('\'', "'\\''");
+        format!("sleep 0.5 && '{exe_str}' '{arg}' >/dev/null 2>&1 &")
+    };
+
+    Command::new("/bin/sh")
+        .args(["-c", &shell_cmd])
+        .spawn()
+        .map_err(|e| AppError::Capture(format!("触发应用重启失败: {e}")))?;
+
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
 pub fn open_screen_capture_settings() -> AppResult<()> {
+    // Ensure the app is registered in TCC ScreenCapture list before opening System Settings.
+    if !check_screen_capture_permission() {
+        let _ = request_screen_capture_permission();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+
     let status = Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
         .status()

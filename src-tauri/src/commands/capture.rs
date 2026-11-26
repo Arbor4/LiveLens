@@ -48,10 +48,21 @@ pub async fn reset_screen_capture_permission(app: AppHandle) -> AppResult<bool> 
     #[cfg(target_os = "macos")]
     {
         let bundle_id = app.config().identifier.clone();
-        tokio::task::spawn_blocking(move || capture::reset_screen_capture_permission(&bundle_id))
-            .await
-            .map_err(|e| AppError::Capture(format!("reset permission task failed: {e}")))??;
-        return Ok(capture::check_screen_capture_permission());
+        tokio::task::spawn_blocking(move || {
+            capture::reset_screen_capture_permission(&bundle_id)?;
+            capture::relaunch_for_screen_permission()
+        })
+        .await
+        .map_err(|e| AppError::Capture(format!("reset permission task failed: {e}")))??;
+
+        // macOS TCC caches per-process ScreenCapture registration; exit so the freshly
+        // relaunched process can re-register LiveLens in System Settings immediately.
+        let app_to_exit = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            app_to_exit.exit(0);
+        });
+        return Ok(false);
     }
     #[cfg(not(target_os = "macos"))]
     {
