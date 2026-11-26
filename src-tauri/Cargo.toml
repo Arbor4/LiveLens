@@ -1,6 +1,6 @@
 [package]
 name = "livelens"
-version = "0.3.0"
+version = "1.0.0"
 edition = "2021"
 description = "LiveLens (幕译) - Real-time screen capture & translation"
 
