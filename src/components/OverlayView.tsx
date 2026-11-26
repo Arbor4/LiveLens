@@ -19,9 +19,11 @@ export function OverlayView() {
   });
 
   useEffect(() => {
+    document.documentElement.dataset.mode = "overlay";
     document.body.dataset.mode = "overlay";
     let unlistenRegions: (() => void) | undefined;
     let unlistenStatus: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -54,6 +56,11 @@ export function OverlayView() {
               setLiveStatus(event.payload);
             }
           });
+          unlistenError = await listenEvent<{ message?: string }>("live:error", (event) => {
+            if (event.payload?.message) {
+              setError(event.payload.message);
+            }
+          });
           return;
         }
 
@@ -70,6 +77,7 @@ export function OverlayView() {
       window.removeEventListener("resize", onResize);
       unlistenRegions?.();
       unlistenStatus?.();
+      unlistenError?.();
     };
   }, []);
 

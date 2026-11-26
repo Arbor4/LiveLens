@@ -376,6 +376,7 @@ fn open_in_place_overlay_windows(
         w.set_position(Position::Physical(PhysicalPosition::new(phys_x, phys_y)))?;
         w.set_size(Size::Physical(PhysicalSize::new(phys_w, phys_h)))?;
         let _ = w.set_ignore_cursor_events(true);
+        let _ = w.eval("window.location.reload()");
         let _ = w.show();
         #[cfg(target_os = "macos")]
         configure_macos_floating_window(&w, (logical_x, logical_y, logical_w, logical_h), false);
@@ -413,7 +414,9 @@ fn open_in_place_overlay_windows(
     // Open floating mini control pill near the overlay bottom/top edge.
     let ctrl_w = 500.0;
     let ctrl_h = 44.0;
-    let ctrl_x = logical_x + (logical_w - ctrl_w).max(0.0) / 2.0;
+    let min_x = rt.monitor_x as f64 + 8.0;
+    let max_x = (rt.monitor_x as f64 + mon_w - ctrl_w - 8.0).max(min_x);
+    let ctrl_x = (logical_x + (logical_w - ctrl_w).max(0.0) / 2.0).clamp(min_x, max_x);
     let ctrl_y = if logical_y + logical_h + ctrl_h + 12.0 <= (rt.monitor_y as f64 + mon_h) {
         logical_y + logical_h + 8.0
     } else {
@@ -421,6 +424,7 @@ fn open_in_place_overlay_windows(
     };
 
     if let Some(w) = app.get_webview_window("live-controls") {
+        let _ = w.set_ignore_cursor_events(false);
         let _ = w.set_position(Position::Logical(tauri::LogicalPosition::new(ctrl_x, ctrl_y)));
         let _ = w.show();
         #[cfg(target_os = "macos")]

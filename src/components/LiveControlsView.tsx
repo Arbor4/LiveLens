@@ -4,20 +4,27 @@ import type { LiveSessionStatus } from "../types/translator";
 
 export function LiveControlsView() {
   const [status, setStatus] = useState<LiveSessionStatus | null>(null);
+  const [liveError, setLiveError] = useState("");
 
   useEffect(() => {
-    document.body.dataset.mode = "overlay";
+    document.documentElement.dataset.mode = "controls";
+    document.body.dataset.mode = "controls";
     let unlistenStatus: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
 
     const boot = async () => {
       try {
         await waitForTauriRuntime();
         const loaded = await invokeCommand<LiveSessionStatus>("load_live_status");
         setStatus(loaded);
+        setLiveError(loaded.lastError || "");
         unlistenStatus = await listenEvent<LiveSessionStatus>("live:status", (event) => {
           if (event.payload) {
             setStatus(event.payload);
           }
+        });
+        unlistenError = await listenEvent<{ message?: string }>("live:error", (event) => {
+          setLiveError(event.payload?.message || "");
         });
       } catch {
         // Ignore boot failure when closing.
@@ -27,6 +34,7 @@ export function LiveControlsView() {
     void boot();
     return () => {
       unlistenStatus?.();
+      unlistenError?.();
     };
   }, []);
 
@@ -40,19 +48,25 @@ export function LiveControlsView() {
   };
 
   return (
-    <div className="flex h-full w-full items-center justify-center bg-transparent p-1 select-none">
+    <div className="flex h-full w-full flex-col items-center justify-center bg-transparent p-1 select-none">
       <div className="flex items-center gap-1 rounded-full border border-white/15 bg-gray-900/92 px-2.5 py-1 text-xs font-medium text-white shadow-xl backdrop-blur-md">
         <span
           data-tauri-drag-region
-          title="拖动控制条"
+          title={liveError || "拖动控制条"}
           className="flex cursor-grab items-center gap-1.5 px-1 text-zinc-300"
         >
           <span
             className={`h-2 w-2 rounded-full ${
-              status?.paused ? "bg-amber-400" : "bg-emerald-400 animate-pulse"
+              liveError
+                ? "bg-red-400"
+                : status?.paused
+                  ? "bg-amber-400"
+                  : "bg-emerald-400 animate-pulse"
             }`}
           />
-          <span className="text-[11px]">{status?.paused ? "已暂停" : "原位实时"}</span>
+          <span className="text-[11px]">
+            {liveError ? "出错" : status?.paused ? "已暂停" : "原位实时"}
+          </span>
         </span>
 
         <span className="mx-0.5 h-3.5 w-px bg-white/15" />

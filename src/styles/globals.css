@@ -20,13 +20,22 @@ body,
   color: var(--text-main);
 }
 
-body[data-mode="overlay"] {
-  background: transparent;
+html[data-mode="overlay"],
+html[data-mode="overlay"] body,
+html[data-mode="overlay"] #root,
+body[data-mode="overlay"],
+body[data-mode="overlay"] #root {
+  background: transparent !important;
   pointer-events: none;
 }
 
-body[data-mode="overlay"] #root {
-  background: transparent;
+html[data-mode="controls"],
+html[data-mode="controls"] body,
+html[data-mode="controls"] #root,
+body[data-mode="controls"],
+body[data-mode="controls"] #root {
+  background: transparent !important;
+  pointer-events: auto;
 }
 
 body[data-mode="capture"] {
